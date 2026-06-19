@@ -42,7 +42,7 @@ wheel.packages = ["src/openjph"]
 [tool.cibuildwheel]
 build = "cp312-* cp313-*"
 test-extras = ["test", "zarr"]
-test-command = "pytest {project}/tests"
+test-command = "pytest {package}/tests"
 
 [tool.cibuildwheel.linux]
 archs = ["x86_64", "aarch64"]
