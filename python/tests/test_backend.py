@@ -5,7 +5,7 @@ import importlib
 import numpy as np
 import pytest
 
-openjph_backend = pytest.importorskip("openjph._openjph")
+openjph_backend = pytest.importorskip("openjph._backend")
 
 RNG = np.random.default_rng(123)
 
@@ -15,7 +15,7 @@ def _make_uint16(shape: tuple[int, ...]) -> np.ndarray:
 
 
 def test_backend_module_importable() -> None:
-    mod = importlib.import_module("openjph._openjph")
+    mod = importlib.import_module("openjph._backend")
     assert hasattr(mod, "encode")
     assert hasattr(mod, "decode")
 
@@ -23,8 +23,10 @@ def test_backend_module_importable() -> None:
 def test_public_api_importable() -> None:
     import openjph
 
-    assert openjph.encode is openjph_backend.encode
-    assert openjph.decode is openjph_backend.decode
+    from openjph import _backend
+
+    assert openjph.encode is _backend.encode
+    assert openjph.decode is _backend.decode
 
 
 def test_roundtrip_2d() -> None:
@@ -40,7 +42,7 @@ def test_roundtrip_2d() -> None:
         color_transform=False,
         planar=True,
     )
-    decoded = openjph_backend.decode(encoded, shape=data.shape, dtype=data.dtype.name)
+    decoded = openjph_backend.decode(encoded)
 
     np.testing.assert_array_equal(decoded, data)
 
@@ -58,7 +60,7 @@ def test_roundtrip_3d() -> None:
         color_transform=False,
         planar=True,
     )
-    decoded = openjph_backend.decode(encoded, shape=data.shape, dtype=data.dtype.name)
+    decoded = openjph_backend.decode(encoded)
 
     np.testing.assert_array_equal(decoded, data)
 
@@ -76,7 +78,7 @@ def test_irreversible_uint16_roundtrip() -> None:
         color_transform=False,
         planar=True,
     )
-    decoded = openjph_backend.decode(encoded, shape=data.shape, dtype=data.dtype.name)
+    decoded = openjph_backend.decode(encoded)
 
     assert decoded.shape == data.shape
     assert decoded.dtype == np.uint16

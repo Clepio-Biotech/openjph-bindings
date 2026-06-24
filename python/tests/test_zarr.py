@@ -17,17 +17,8 @@ class _FakeOpenJPHBackend:
         np.save(buf, np.asarray(array), allow_pickle=False)
         return buf.getvalue()
 
-    def decode(
-        self,
-        data: bytes,
-        *,
-        shape: tuple[int, ...],
-        dtype: str,
-    ) -> np.ndarray:
-        arr = np.load(io.BytesIO(data), allow_pickle=False)
-        if tuple(arr.shape) != tuple(shape):
-            raise ValueError(f"shape mismatch: expected {shape}, got {arr.shape}")
-        return np.asarray(arr, dtype=np.dtype(dtype))
+    def decode(self, data: bytes) -> np.ndarray:
+        return np.load(io.BytesIO(data), allow_pickle=False)
 
 
 def _make_uint16(shape: tuple[int, ...]) -> np.ndarray:

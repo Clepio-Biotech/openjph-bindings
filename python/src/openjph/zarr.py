@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 Layout = Literal["yx", "zyx", "cyx", "yxc"]
 ProgressionOrder = Literal["LRCP", "RLCP", "RPCL", "PCRL", "CPRL"]
 _SUPPORTED_PROGRESSIONS = {"LRCP", "RLCP", "RPCL", "PCRL", "CPRL"}
-_BACKEND_MODULE_NAME = "openjph._openjph"
+_BACKEND_MODULE_NAME = "openjph._backend"
 
 
 class OpenJPHCodecUnavailableError(RuntimeError):
@@ -43,13 +43,7 @@ class _OpenJPHBackend(Protocol):
         planar: bool,
     ) -> bytes: ...
 
-    def decode(
-        self,
-        data: bytes,
-        *,
-        shape: tuple[int, ...],
-        dtype: str,
-    ) -> np.ndarray: ...
+    def decode(self, data: bytes) -> np.ndarray: ...
 
 
 _backend_cache: _OpenJPHBackend | None = None
@@ -349,8 +343,6 @@ class OpenJPHCodec(ArrayBytesCodec):
         decoded = await asyncio.to_thread(
             backend.decode,
             chunk_bytes.to_bytes(),
-            shape=_backend_shape(chunk_spec.shape, layout),
-            dtype=native_dtype.name,
         )
         arr = _denormalize_from_backend(np.asarray(decoded), layout)
 
