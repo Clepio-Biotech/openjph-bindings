@@ -25,7 +25,13 @@ typedef struct {
   int planar;
 } openjph_encode_params_t;
 
-#if defined(__GNUC__) || defined(__clang__)
+#if defined(_MSC_VER)
+#ifdef OPENJPH_C_EXPORTS
+#define OPENJPH_API __declspec(dllexport)
+#else
+#define OPENJPH_API __declspec(dllimport)
+#endif
+#elif defined(__GNUC__) || defined(__clang__)
 #define OPENJPH_API __attribute__((visibility("default")))
 #else
 #define OPENJPH_API
@@ -47,7 +53,7 @@ OPENJPH_API int openjph_encode(const openjph_array_t *img,
 /* Decode an HTJ2K codestream.
    Shape and element type are read from the codestream SIZ marker — no target
    dtype needed. On success returns 0, sets
-   *out/*out_len/*out_ndim/out_dims/*out_bit_depth/*out_is_signed. Caller must
+   out, out_len, out_ndim, out_dims, out_bit_depth, out_is_signed. Caller must
    free *out with openjph_free(). On failure returns -1, writes a
    null-terminated message into err_buf. */
 OPENJPH_API int openjph_decode(const uint8_t *codestream, size_t codestream_len,

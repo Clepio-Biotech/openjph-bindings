@@ -17,6 +17,16 @@ if(NOT TARGET openjph_c)
     endif()
   endif()
 
+  # Sibling detection: in monorepo and cibuildwheel wheel builds native/ sits
+  # next to python/, so use it directly without requiring an env var.
+  if(NOT (DEFINED NATIVE_PATH AND IS_DIRECTORY "${NATIVE_PATH}"))
+    get_filename_component(_sibling_native
+      "${CMAKE_CURRENT_SOURCE_DIR}/../native" ABSOLUTE)
+    if(IS_DIRECTORY "${_sibling_native}")
+      set(NATIVE_PATH "${_sibling_native}")
+    endif()
+  endif()
+
   if(DEFINED NATIVE_PATH AND IS_DIRECTORY "${NATIVE_PATH}")
     message(STATUS "pyopenjph: using NATIVE_PATH=${NATIVE_PATH}")
     add_subdirectory("${NATIVE_PATH}" native_build)
