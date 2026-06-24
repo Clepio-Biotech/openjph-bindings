@@ -1,16 +1,32 @@
 from __future__ import annotations
 
 import ctypes
+import os
+import sys
 from pathlib import Path
 
 import numpy as np
 
-# Resolve library path: look next to this file (installed package), else system search.
-_lib_path = Path(__file__).parent / "libopenjph_c.so"
+# Resolve platform-specific library filename.
+_platform = sys.platform
+if _platform == "win32":
+    _lib_name = "openjph_c.dll"
+elif _platform == "darwin":
+    _lib_name = "libopenjph_c.dylib"
+else:
+    _lib_name = "libopenjph_c.so"
+
+_pkg_dir = Path(__file__).parent
+_lib_path = _pkg_dir / _lib_name
+
+# On Windows, ctypes searches PATH but not the package directory for transitive DLLs.
+if _platform == "win32" and hasattr(os, "add_dll_directory"):
+    os.add_dll_directory(str(_pkg_dir))
+
 try:
-    _lib = ctypes.CDLL(str(_lib_path) if _lib_path.exists() else "libopenjph_c.so")
+    _lib = ctypes.CDLL(str(_lib_path) if _lib_path.exists() else _lib_name)
 except OSError as e:
-    raise ImportError(f"Could not load libopenjph_c: {e}") from e
+    raise ImportError(f"Could not load {_lib_name}: {e}") from e
 
 # ---- C struct mirrors ----
 

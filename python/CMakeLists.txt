@@ -45,4 +45,7 @@ if(NOT TARGET openjph_c)
 
 endif()
 
-install(TARGETS openjph_c LIBRARY DESTINATION openjph)
+install(TARGETS openjph_c
+  LIBRARY DESTINATION openjph   # .so (Linux) and .dylib (macOS)
+  RUNTIME DESTINATION openjph   # .dll (Windows)
+)
