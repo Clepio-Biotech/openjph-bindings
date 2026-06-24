@@ -14,13 +14,14 @@ except OSError as e:
 
 # ---- C struct mirrors ----
 
+
 class _Array(ctypes.Structure):
     _fields_ = [
-        ("data",      ctypes.c_void_p),
-        ("ndim",      ctypes.c_size_t),
-        ("dim0",      ctypes.c_size_t),   # dims[0]
-        ("dim1",      ctypes.c_size_t),   # dims[1]
-        ("dim2",      ctypes.c_size_t),   # dims[2]
+        ("data", ctypes.c_void_p),
+        ("ndim", ctypes.c_size_t),
+        ("dim0", ctypes.c_size_t),  # dims[0]
+        ("dim1", ctypes.c_size_t),  # dims[1]
+        ("dim2", ctypes.c_size_t),  # dims[2]
         ("bit_depth", ctypes.c_uint32),
         ("is_signed", ctypes.c_int32),
     ]
@@ -28,27 +29,27 @@ class _Array(ctypes.Structure):
 
 class _EncodeParams(ctypes.Structure):
     _fields_ = [
-        ("irreversible",       ctypes.c_int),
-        ("qstep",              ctypes.c_float),
-        ("use_qstep",          ctypes.c_int),
+        ("irreversible", ctypes.c_int),
+        ("qstep", ctypes.c_float),
+        ("use_qstep", ctypes.c_int),
         ("num_decompositions", ctypes.c_int),
-        ("block_width",        ctypes.c_int),
-        ("block_height",       ctypes.c_int),
-        ("progression_order",  ctypes.c_char * 8),
-        ("color_transform",    ctypes.c_int),
-        ("planar",             ctypes.c_int),
+        ("block_width", ctypes.c_int),
+        ("block_height", ctypes.c_int),
+        ("progression_order", ctypes.c_char * 8),
+        ("color_transform", ctypes.c_int),
+        ("planar", ctypes.c_int),
     ]
 
 
 # ---- dtype lookup tables ----
 
 _DTYPE_TO_BD_SIGNED: dict[np.dtype, tuple[int, int]] = {
-    np.dtype("uint8"):  (8,  0),
-    np.dtype("int8"):   (8,  1),
+    np.dtype("uint8"): (8, 0),
+    np.dtype("int8"): (8, 1),
     np.dtype("uint16"): (16, 0),
-    np.dtype("int16"):  (16, 1),
+    np.dtype("int16"): (16, 1),
     np.dtype("uint32"): (32, 0),
-    np.dtype("int32"):  (32, 1),
+    np.dtype("int32"): (32, 1),
 }
 
 _BD_SIGNED_TO_DTYPE: dict[tuple[int, int], np.dtype] = {
@@ -57,7 +58,7 @@ _BD_SIGNED_TO_DTYPE: dict[tuple[int, int], np.dtype] = {
 
 # ---- configure function signatures ----
 
-_lib.openjph_encode.restype  = ctypes.c_int
+_lib.openjph_encode.restype = ctypes.c_int
 _lib.openjph_encode.argtypes = [
     ctypes.POINTER(_Array),
     ctypes.POINTER(_EncodeParams),
@@ -67,25 +68,26 @@ _lib.openjph_encode.argtypes = [
     ctypes.c_size_t,
 ]
 
-_lib.openjph_decode.restype  = ctypes.c_int
+_lib.openjph_decode.restype = ctypes.c_int
 _lib.openjph_decode.argtypes = [
     ctypes.c_char_p,
     ctypes.c_size_t,
     ctypes.POINTER(ctypes.c_void_p),
     ctypes.POINTER(ctypes.c_size_t),
     ctypes.POINTER(ctypes.c_size_t),
-    ctypes.POINTER(ctypes.c_size_t),   # out_dims[3] decays to size_t*
+    ctypes.POINTER(ctypes.c_size_t),  # out_dims[3] decays to size_t*
     ctypes.POINTER(ctypes.c_uint32),
     ctypes.POINTER(ctypes.c_int32),
     ctypes.c_char_p,
     ctypes.c_size_t,
 ]
 
-_lib.openjph_free.restype  = None
+_lib.openjph_free.restype = None
 _lib.openjph_free.argtypes = [ctypes.c_void_p]
 
 
 # ---- public API ----
+
 
 def encode(
     array: np.ndarray,
@@ -117,7 +119,9 @@ def encode(
     img = _Array(
         data=arr.ctypes.data,
         ndim=ndim,
-        dim0=d0, dim1=d1, dim2=d2,
+        dim0=d0,
+        dim1=d1,
+        dim2=d2,
         bit_depth=bit_depth,
         is_signed=is_signed_val,
     )
@@ -156,13 +160,13 @@ def encode(
 def decode(data: bytes | np.ndarray) -> np.ndarray:
     cs = bytes(data) if not isinstance(data, bytes) else data
 
-    out_ptr       = ctypes.c_void_p(0)
-    out_len       = ctypes.c_size_t(0)
-    out_ndim      = ctypes.c_size_t(0)
-    out_dims      = (ctypes.c_size_t * 3)(0, 0, 0)
+    out_ptr = ctypes.c_void_p(0)
+    out_len = ctypes.c_size_t(0)
+    out_ndim = ctypes.c_size_t(0)
+    out_dims = (ctypes.c_size_t * 3)(0, 0, 0)
     out_bit_depth = ctypes.c_uint32(0)
     out_is_signed = ctypes.c_int32(0)
-    err_buf       = ctypes.create_string_buffer(1024)
+    err_buf = ctypes.create_string_buffer(1024)
 
     ret = _lib.openjph_decode(
         cs,
