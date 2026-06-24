@@ -24,16 +24,13 @@ if(NOT TARGET openjph_c)
     # P2: download openjph-bindings from GitHub and use its native/ subdirectory.
     include(FetchContent)
     set(_BINDINGS_TAG "v0.1.0")
+    message(STATUS "pyopenjph: NATIVE_PATH not set — downloading openjph-bindings ${_BINDINGS_TAG}")
     FetchContent_Declare(openjph_bindings
       GIT_REPOSITORY https://github.com/LimenResearch/openjph-bindings
       GIT_TAG        ${_BINDINGS_TAG}
-      GIT_SHALLOW    TRUE)
-    FetchContent_GetProperties(openjph_bindings)
-    if(NOT openjph_bindings_POPULATED)
-      message(STATUS "pyopenjph: NATIVE_PATH not set — downloading openjph-bindings ${_BINDINGS_TAG}")
-      FetchContent_Populate(openjph_bindings)
-    endif()
-    add_subdirectory("${openjph_bindings_SOURCE_DIR}/native" native_build)
+      GIT_SHALLOW    TRUE
+      SOURCE_SUBDIR  native)
+    FetchContent_MakeAvailable(openjph_bindings)
   endif()
 
 endif()

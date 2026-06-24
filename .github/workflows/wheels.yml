@@ -41,6 +41,9 @@ jobs:
           package-dir: python
         env:
           CIBW_ARCHS: ${{ matrix.archs }}
+          CIBW_ENVIRONMENT_LINUX: "NATIVE_PATH=/project/native"
+          CIBW_ENVIRONMENT_MACOS: "NATIVE_PATH=${{ github.workspace }}/native"
+          CIBW_ENVIRONMENT_WINDOWS: "NATIVE_PATH=${{ github.workspace }}/native"
       - uses: actions/upload-artifact@v7
         with:
           name: pyopenjph-wheels-${{ matrix.os }}-${{ matrix.arch_label }}
