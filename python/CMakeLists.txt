@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.24)
 
 project(pyopenjph LANGUAGES C CXX)
 
@@ -36,7 +36,7 @@ if(NOT TARGET openjph_c)
     set(_BINDINGS_TAG "v0.1.0")
     message(STATUS "pyopenjph: NATIVE_PATH not set — downloading openjph-bindings ${_BINDINGS_TAG}")
     FetchContent_Declare(openjph_bindings
-      GIT_REPOSITORY https://github.com/LimenResearch/openjph-bindings
+      GIT_REPOSITORY https://github.com/Clepio-Biotech/openjph-bindings
       GIT_TAG        ${_BINDINGS_TAG}
       GIT_SHALLOW    TRUE
       SOURCE_SUBDIR  native)

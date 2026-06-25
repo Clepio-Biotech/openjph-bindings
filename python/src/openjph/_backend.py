@@ -7,6 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
+from openjph._constants import PROGRESSION_ORDERS
+
 # Resolve platform-specific library filename.
 _platform = sys.platform
 if _platform == "win32":
@@ -112,10 +114,20 @@ def encode(
     qstep: float | None = None,
     num_decompositions: int = 5,
     block_size: tuple[int, int] = (64, 64),
-    progression_order: str = "CPRL",
+    progression_order: str = "LRCP",
     color_transform: bool = False,
     planar: bool = True,
 ) -> bytes:
+    if progression_order not in PROGRESSION_ORDERS:
+        raise ValueError(
+            f"Unsupported progression_order {progression_order!r}; "
+            f"expected one of {list(PROGRESSION_ORDERS)}"
+        )
+    if num_decompositions < 0:
+        raise ValueError(f"num_decompositions must be >= 0, got {num_decompositions}")
+    if block_size[0] <= 0 or block_size[1] <= 0:
+        raise ValueError(f"block_size values must be positive, got {block_size!r}")
+
     arr = np.ascontiguousarray(array)
     bd_sgn = _DTYPE_TO_BD_SIGNED.get(arr.dtype)
     if bd_sgn is None:
@@ -166,7 +178,7 @@ def encode(
         ctypes.c_size_t(1024),
     )
     if ret != 0:
-        raise RuntimeError(f"openjph_encode: {err_buf.value.decode()}")
+        raise RuntimeError(f"openjph_encode: {err_buf.value.decode(errors='replace')}")
 
     result = bytes(ctypes.string_at(out_ptr.value, int(out_len.value)))
     _lib.openjph_free(out_ptr)
@@ -197,7 +209,7 @@ def decode(data: bytes | np.ndarray) -> np.ndarray:
         ctypes.c_size_t(1024),
     )
     if ret != 0:
-        raise RuntimeError(f"openjph_decode: {err_buf.value.decode()}")
+        raise RuntimeError(f"openjph_decode: {err_buf.value.decode(errors='replace')}")
 
     key = (int(out_bit_depth.value), int(out_is_signed.value))
     dtype = _BD_SIGNED_TO_DTYPE.get(key)

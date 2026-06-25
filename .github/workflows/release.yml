@@ -1,4 +1,13 @@
-name: Release
+name: Release native binaries
+
+# Builds libopenjph_c for every platform Julia needs and publishes them as
+# release assets (one gzipped tarball per platform) that OpenJPH.jl's
+# Artifacts.toml binds to. On a v* tag → a real release; on a PR → an updatable
+# dev pre-release (tag dev-pr-<n>) for testing before cutting a tag.
+#
+# NOTE: this workflow has not yet been exercised end-to-end on CI — it is the
+# producer side of the D6 distribution rework. The consumer switch (OpenJPH.jl
+# loading via Artifacts.toml) is activated only after a real release exists.
 
 on:
   push:
@@ -10,40 +19,121 @@ permissions:
   contents: write
 
 jobs:
-  build-linux-x86_64:
-    runs-on: ubuntu-22.04
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux is built inside a manylinux_2_28 image (glibc 2.28 floor) so
+          # the .so loads on older distros, matching the Python wheels.
+          - name: linux-x86_64
+            os: ubuntu-latest
+            kind: linux
+            docker_platform: linux/amd64
+            manylinux: quay.io/pypa/manylinux_2_28_x86_64
+            ext: so
+          - name: linux-aarch64
+            os: ubuntu-latest
+            kind: linux
+            docker_platform: linux/arm64
+            manylinux: quay.io/pypa/manylinux_2_28_aarch64
+            ext: so
+          - name: macos-x86_64
+            os: macos-13
+            kind: macos
+            ext: dylib
+          - name: macos-arm64
+            os: macos-14
+            kind: macos
+            ext: dylib
+          - name: windows-x86_64
+            os: windows-latest
+            kind: windows
+            ext: dll
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure
-        run: cmake -B build native/ -DCMAKE_BUILD_TYPE=Release
+      - name: Set up QEMU (linux aarch64)
+        if: matrix.name == 'linux-aarch64'
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
 
-      - name: Build
-        run: cmake --build build -j$(nproc)
+      # Build on the host (checkout/node stay on the host); the linux build runs
+      # inside manylinux via docker so the glibc floor is correct.
+      - name: Build native (linux / manylinux)
+        if: matrix.kind == 'linux'
+        run: |
+          docker run --rm --platform ${{ matrix.docker_platform }} \
+            -v "$PWD":/io -w /io ${{ matrix.manylinux }} bash -c '
+              python3 -m pip install --quiet cmake &&
+              cmake -B build native/ -DCMAKE_BUILD_TYPE=Release &&
+              cmake --build build -j"$(nproc)"'
 
-      - name: Stage artifact (tag release)
-        if: startsWith(github.ref, 'refs/tags/')
-        run: cp build/libopenjph_c.so libopenjph_c-linux-x86_64.so
+      - name: Build native (macOS)
+        if: matrix.kind == 'macos'
+        run: |
+          cmake -B build native/ -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j3
 
-      - name: Create GitHub Release
+      - name: Build native (Windows)
+        if: matrix.kind == 'windows'
+        run: |
+          cmake -B build native/ -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
+
+      - name: Package asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.kind }}" = "windows" ]; then
+            src=$(find build -name 'openjph_c.dll' | head -1)
+          else
+            src=$(find build -name "libopenjph_c.${{ matrix.ext }}" | head -1)
+          fi
+          test -n "$src" || { echo "native library not found under build/"; exit 1; }
+          # macOS: give the dylib a relocatable install name so dlopen by an
+          # absolute path works wherever Pkg places the artifact.
+          if [ "${{ matrix.kind }}" = "macos" ]; then
+            install_name_tool -id @rpath/libopenjph_c.dylib "$src"
+          fi
+          # Stage the lib under its canonical filename, then tar it (Artifacts
+          # are gzipped tarballs that unpack to a directory containing the lib).
+          libname="libopenjph_c.${{ matrix.ext }}"
+          mkdir -p stage && cp "$src" "stage/$libname"
+          suffix=""
+          [ "${{ github.event_name }}" = "pull_request" ] && suffix="-dev"
+          tarball="libopenjph_c-${{ matrix.name }}${suffix}.tar.gz"
+          tar -czf "$tarball" -C stage "$libname"
+          echo "TARBALL=$tarball" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.name }}
+          path: ${{ env.TARBALL }}
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish release (tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: libopenjph_c-linux-x86_64.so
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: dist/*.tar.gz
 
-      - name: Stage artifact (dev pre-release)
-        if: github.event_name == 'pull_request'
-        run: cp build/libopenjph_c.so libopenjph_c-linux-x86_64-dev.so
-
-      - name: Create dev pre-release
+      - name: Publish dev pre-release (PR)
         if: github.event_name == 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: dev-pr-${{ github.event.pull_request.number }}
           name: Dev build (PR #${{ github.event.pull_request.number }})
           prerelease: true
-          files: libopenjph_c-linux-x86_64-dev.so
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: dist/*.tar.gz

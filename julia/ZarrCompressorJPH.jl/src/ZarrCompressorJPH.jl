@@ -45,7 +45,7 @@ function HTJ2KCodec(;
                color_transform, planar)
 end
 
-V3Codecs.name(::HTJ2KCodec) = "htj2k"
+V3Codecs.name(::HTJ2KCodec) = "openjph_htj2k"
 
 function V3Codecs.codec_encode(c::HTJ2KCodec, data::AbstractArray)
     openjph_encode(data;
@@ -60,24 +60,33 @@ function V3Codecs.codec_encode(c::HTJ2KCodec, data::AbstractArray)
 end
 
 function V3Codecs.codec_decode(c::HTJ2KCodec, encoded::Vector{UInt8},
-        ::Type{T}, ::NTuple{N, Int64};
+        ::Type{T}, dims::NTuple{N, Int64};
         fill_value = nothing) where {T, N}
     _ = fill_value
-    openjph_decode(encoded; color_transform = c.color_transform)
+    raw = openjph_decode(encoded; color_transform = c.color_transform)
+    # The element type and shape come from the codestream's SIZ marker. Validate
+    # them against what Zarr expects: a mismatch (corruption / writer bug) would
+    # otherwise be silently linear-copied or converted by Zarr's copyto!.
+    eltype(raw) === T || error(
+        "HTJ2KCodec decode: element type mismatch — codestream has $(eltype(raw)), expected $T")
+    size(raw) == dims || error(
+        "HTJ2KCodec decode: shape mismatch — codestream has $(size(raw)), expected $dims")
+    raw
 end
 
 function JSON.lower(c::HTJ2KCodec)
     cfg = Dict{String, Any}(
         "irreversible"       => c.irreversible,
         "num_decompositions" => c.num_decompositions,
-        "block_width"        => c.block_width,
-        "block_height"       => c.block_height,
+        # Canonical on-disk form is block_size = [width, height], matching the
+        # Python codec and OpenJPH's set_block_dims(width, height).
+        "block_size"         => [c.block_width, c.block_height],
         "progression_order"  => c.progression_order,
         "color_transform"    => c.color_transform,
         "planar"             => c.planar,
     )
     c.qstep != 0f0 && (cfg["qstep"] = c.qstep)
-    Dict("name" => "htj2k", "configuration" => cfg)
+    Dict("name" => "openjph_htj2k", "configuration" => cfg)
 end
 
 """
@@ -114,9 +123,11 @@ function zcreate_htj2k(::Type{T}, dims::Integer...;
 end
 
 function _parse_htj2k_config(config)
+    # Canonical block_size = [width, height]. Fall back to the legacy
+    # block_width/block_height keys for back-compat with older Julia-written configs.
     block_size = get(config, "block_size", nothing)
-    block_width  = block_size !== nothing ? Int(block_size[2]) : Int(get(config, "block_width",  64))
-    block_height = block_size !== nothing ? Int(block_size[1]) : Int(get(config, "block_height", 64))
+    block_width  = block_size !== nothing ? Int(block_size[1]) : Int(get(config, "block_width",  64))
+    block_height = block_size !== nothing ? Int(block_size[2]) : Int(get(config, "block_height", 64))
     HTJ2KCodec(;
         irreversible       = Bool(get(config, "irreversible", false)),
         qstep              = Float32(get(config, "qstep", 0f0)),

@@ -21,16 +21,16 @@ import JSON
     @testset "JSON serialization round-trip" begin
         c = HTJ2KCodec()
         d = JSON.lower(c)
-        @test d["name"] == "htj2k"
+        @test d["name"] == "openjph_htj2k"
         cfg = d["configuration"]
         @test cfg["irreversible"] == false
         @test !haskey(cfg, "qstep")   # omitted when 0f0
         @test cfg["num_decompositions"] == 5
-        @test cfg["block_width"] == 64
+        @test cfg["block_size"] == [64, 64]   # [width, height], matches Python
         @test cfg["progression_order"] == "LRCP"
 
         # round-trip via the registered parser
-        c2 = V3Codecs.codec_parsers["htj2k"].parser(cfg, nothing)
+        c2 = V3Codecs.codec_parsers["openjph_htj2k"].parser(cfg, nothing)
         @test c2.irreversible       == c.irreversible
         @test c2.qstep              == c.qstep
         @test c2.num_decompositions == c.num_decompositions
@@ -41,6 +41,15 @@ import JSON
         @test c2.planar             == c.planar
     end
 
+    @testset "Non-square block_size is not transposed" begin
+        c   = HTJ2KCodec(block_width = 32, block_height = 64)
+        cfg = JSON.lower(c)["configuration"]
+        @test cfg["block_size"] == [32, 64]   # [width, height]
+        c2  = V3Codecs.codec_parsers["openjph_htj2k"].parser(cfg, nothing)
+        @test c2.block_width  == 32
+        @test c2.block_height == 64
+    end
+
     @testset "qstep serialized when non-zero" begin
         c = HTJ2KCodec(irreversible=true, qstep=0.01f0)
         d = JSON.lower(c)
@@ -49,7 +58,8 @@ import JSON
     end
 
     @testset "codec registered with Zarr" begin
-        @test haskey(V3Codecs.codec_parsers, "htj2k")
+        @test haskey(V3Codecs.codec_parsers, "openjph_htj2k")
+        @test haskey(V3Codecs.codec_parsers, "htj2k")   # legacy alias kept for reads
     end
 
     @testset "codec_encode / codec_decode — 2D UInt16 lossless" begin
@@ -60,6 +70,15 @@ import JSON
         @test length(enc) > 0
         dec  = V3Codecs.codec_decode(c, enc, UInt16, (64, 128))
         @test dec == data
+    end
+
+    @testset "codec_decode rejects shape/eltype mismatch" begin
+        c    = HTJ2KCodec()
+        data = rand(UInt16, 32, 64)
+        enc  = V3Codecs.codec_encode(c, data)
+        @test V3Codecs.codec_decode(c, enc, UInt16, (32, 64)) == data
+        @test_throws Exception V3Codecs.codec_decode(c, enc, UInt16, (64, 32))  # wrong shape
+        @test_throws Exception V3Codecs.codec_decode(c, enc, Int16, (32, 64))   # wrong eltype
     end
 
     @testset "codec_encode / codec_decode — 3D UInt16 lossless" begin

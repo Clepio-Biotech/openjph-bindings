@@ -5,10 +5,15 @@ using Libdl
 const _deps_file = joinpath(@__DIR__, "..", "deps", "deps.jl")
 
 if isfile(_deps_file)
-    include(_deps_file)   # defines: const libopenjph_c = "..."
+    include(_deps_file)   # defines: const libopenjph_c_name, const libopenjph
 else
     error("OpenJPH not built. Run `import Pkg; Pkg.build(\"OpenJPH\")`.")
 end
+
+# deps.jl records only the library's basename; resolve it relative to deps/ at
+# load time so the package stays relocatable (a moved depot / shared precompile
+# cache must not break loading).
+const libopenjph_c = joinpath(@__DIR__, "..", "deps", libopenjph_c_name)
 
 # When libopenjph was statically linked into libopenjph_c, deps.jl sets
 # libopenjph = "" and we skip the separate dlopen — there is nothing to load.
@@ -63,6 +68,22 @@ end
 
 _str_to_po(s::String) = ntuple(i -> i <= ncodeunits(s) ? Cchar(codeunit(s, i)) : Cchar(0), 8)
 
+# True iff `a` is stored contiguously in column-major order, so that pointer(a)
+# followed by a linear read of length(a) elements is valid. This is stricter and
+# less wasteful than `a isa DenseArray`: it also accepts contiguous views (which
+# are not <: DenseArray) without copying, while rejecting strided views,
+# transpose, and adjoint (whose pointer/size disagree). `Base.iscontiguous` is
+# internal and errors on plain Arrays, so we test strides directly.
+function _is_contiguous(a::AbstractArray)
+    a isa StridedArray || return false   # transpose/adjoint/etc. → not strided
+    expected = 1
+    @inbounds for d in 1:ndims(a)
+        stride(a, d) == expected || return false
+        expected *= size(a, d)
+    end
+    return true
+end
+
 # ---- encode ----
 
 """
@@ -101,6 +122,12 @@ function openjph_encode(arr::AbstractArray{T,N};
         planar::Bool = true) where {T <: Union{UInt8, Int8, UInt16, Int16, UInt32, Int32}, N}
 
     N == 2 || N == 3 || throw(ArgumentError("arr must be 2-D or 3-D, got $(N)-D"))
+
+    # We hand pointer(arr) to C and report size(arr), so the buffer must be
+    # contiguous column-major. A view/transpose would otherwise have its pointer
+    # reference the parent while size() describes the view → silently wrong data.
+    # Contiguous inputs (Array/reshape/contiguous view) pass through with no copy.
+    arr = _is_contiguous(arr) ? arr : Array(arr)
 
     # Pass the native memory pointer directly — no copy or permutation.
     #
@@ -168,8 +195,13 @@ function openjph_encode(arr::AbstractArray{T,N};
         error("openjph_encode: $(unsafe_string(pointer(err_buf)))")
     end
 
-    result = copy(unsafe_wrap(Array, out_ptr[], Int(out_len[]); own=false))
-    ccall((:openjph_free, libopenjph_c), Cvoid, (Ptr{Cvoid},), out_ptr[])
+    # try/finally so the C-allocated buffer is always freed, even if the Julia
+    # copy throws (e.g. OOM) after the ccall succeeded.
+    result = try
+        copy(unsafe_wrap(Array, out_ptr[], Int(out_len[]); own=false))
+    finally
+        ccall((:openjph_free, libopenjph_c), Cvoid, (Ptr{Cvoid},), out_ptr[])
+    end
     result
 end
 
@@ -238,8 +270,13 @@ function openjph_decode(codestream::AbstractVector{UInt8};
         (Int(dims[3]), Int(dims[2]), Int(dims[1]))
     end
 
-    raw = copy(unsafe_wrap(Array, reinterpret(Ptr{T}, out_ptr[]), shape_c; own=false))
-    ccall((:openjph_free, libopenjph_c), Cvoid, (Ptr{Cvoid},), out_ptr[])
+    # try/finally so the C-allocated buffer is always freed, even if the Julia
+    # copy throws after the ccall succeeded.
+    raw = try
+        copy(unsafe_wrap(Array, reinterpret(Ptr{T}, out_ptr[]), shape_c; own=false))
+    finally
+        ccall((:openjph_free, libopenjph_c), Cvoid, (Ptr{Cvoid},), out_ptr[])
+    end
     raw
 end
 

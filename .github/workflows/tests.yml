@@ -50,11 +50,38 @@ jobs:
           version: '1'
       - name: Install cmake
         run: sudo apt-get install -y cmake
-      - name: Build OpenJPH
+      # No NATIVE_PATH on purpose: this exercises build.jl's in-monorepo
+      # sibling-detection of native/ — the path a fresh monorepo build actually
+      # uses, and the one whose breakage previously shipped unnoticed.
+      - name: Test OpenJPH
+        run: julia --project=julia/OpenJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.build("OpenJPH"); Pkg.test()'
+      - name: Test ZarrCompressorJPH
+        run: julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.build("OpenJPH"); Pkg.test()'
+
+  interop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+      - name: Install cmake
+        run: sudo apt-get install -y cmake
+      - name: Install pyopenjph
         env:
           NATIVE_PATH: ${{ github.workspace }}/native
-        run: julia --project=julia/OpenJPH.jl -e 'import Pkg; Pkg.build("OpenJPH")'
-      - name: Test OpenJPH
-        run: julia --project=julia/OpenJPH.jl -e 'import Pkg; Pkg.test("OpenJPH")'
-      - name: Test ZarrCompressorJPH
-        run: julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.test("ZarrCompressorJPH")'
+        run: python -m pip install -e "./python[zarr]"
+      - name: Build Julia packages
+        run: julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.build("OpenJPH")'
+      - name: Cross-language Zarr interop
+        run: bash tests/interop/run.sh
+
+  version-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versions agree across the monorepo
+        run: bash tests/check_versions.sh

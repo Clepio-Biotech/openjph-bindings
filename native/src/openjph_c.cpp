@@ -53,6 +53,14 @@ uint32_t max_decompositions(size_t width, size_t height) {
   return levels;
 }
 
+/* Portable overflow-checked multiply (no compiler builtins, so MSVC is fine).
+   Throws if a*b would wrap size_t. */
+size_t checked_mul(size_t a, size_t b) {
+  if (a != 0 && b > std::numeric_limits<size_t>::max() / a)
+    throw std::runtime_error("Decoded image dimensions overflow");
+  return a * b;
+}
+
 /* Copy a row from a typed source pointer into an OpenJPH line buffer.
    Handles all three internal buffer formats (float, si32, si64). */
 template <typename Src>
@@ -130,10 +138,14 @@ template <typename T>
 T *decode_to_buffer(ojph::codestream &codestream, const ArrayInfo &info) {
   const size_t total = info.components * info.height * info.width;
   const size_t total_lines = info.components * info.height;
-  T *data = static_cast<T *>(std::malloc(total * sizeof(T)));
+  // RAII: the buffer is freed on any throw below (e.g. a short/corrupt stream
+  // where pull() returns null mid-loop), and only released to the caller on
+  // success. Caller frees it via openjph_free (== std::free).
+  std::unique_ptr<T, decltype(&std::free)> data(
+      static_cast<T *>(std::malloc(total * sizeof(T))), &std::free);
   if (!data)
     throw std::runtime_error("Failed to allocate decode buffer");
-  std::fill(data, data + total, T{});
+  std::fill(data.get(), data.get() + total, T{});
 
   std::vector<size_t> rows(info.components, 0);
   for (size_t line_index = 0; line_index < total_lines; ++line_index) {
@@ -143,15 +155,17 @@ T *decode_to_buffer(ojph::codestream &codestream, const ArrayInfo &info) {
       throw std::runtime_error(
           "OpenJPH decode ended before the requested array was filled");
     const size_t row = rows[component]++;
-    copy_linebuf_to_array(line, data, info, component, row);
+    copy_linebuf_to_array(line, data.get(), info, component, row);
   }
-  return data;
+  return data.release();
 }
 
 /* Copy one row of the input C buffer into an ojph::line_buf.
    Dispatches on bit_depth and is_signed to select the correct pointer type.
-   For 32-bit types, OpenJPH always uses si64 line buffers (precision > 32),
-   which copy_to_linebuf_impl handles via the LFT_64BIT branch. */
+   The line_buf handed back by exchange()/pull() is always si32
+   (LFT_32BIT | LFT_INTEGER) for every bit depth and both reversible and
+   irreversible modes; the si64/float branches in the copy helpers are dead for
+   this API path. (32-bit irreversible is lossy and may lose precision.) */
 void copy_row_to_linebuf_c(const void *data, const ArrayInfo &info,
                            size_t component, size_t row, ojph::line_buf *line) {
   const size_t off = row_offset(info, component, row);
@@ -205,6 +219,9 @@ int encode_impl_c(const openjph_array_t *img,
       info.width = img->dims[2];
     }
 
+    if (info.components == 0 || info.height == 0 || info.width == 0)
+      throw std::runtime_error("image dimensions must be non-zero");
+
     if (params->color_transform && info.components != 3)
       throw std::runtime_error("color_transform requires exactly 3 components");
 
@@ -236,7 +253,13 @@ int encode_impl_c(const openjph_array_t *img,
       cod.set_num_decomposition(clamped);
       cod.set_block_dims(static_cast<ojph::ui32>(params->block_width),
                          static_cast<ojph::ui32>(params->block_height));
-      cod.set_progression_order(params->progression_order);
+      // set_progression_order() strlen's its argument, but progression_order is a
+      // fixed char[8] that callers may fill completely (no terminator). Copy into
+      // a NUL-terminated local to avoid an out-of-bounds read.
+      char po[9];
+      std::memcpy(po, params->progression_order, 8);
+      po[8] = '\0';
+      cod.set_progression_order(po);
       cod.set_color_transform(params->color_transform != 0);
       cod.set_reversible(params->irreversible == 0);
       if (params->irreversible && params->use_qstep) {
@@ -284,7 +307,8 @@ int decode_impl_c(const uint8_t *codestream_data, size_t codestream_len,
                 codestream_len);
 
     ojph::codestream codestream;
-    codestream.set_planar(false);
+    // Decode planarity is dictated by the codestream's color-transform flag and
+    // is set inside read_headers(); an explicit set_planar() here is overwritten.
     codestream.read_headers(&infile);
 
     /* Read shape and element type from the codestream SIZ marker. */
@@ -294,6 +318,19 @@ int decode_impl_c(const uint8_t *codestream_data, size_t codestream_len,
     const uint32_t h = siz.get_image_extent().y;
     const uint32_t bd = siz.get_bit_depth(0);
     const bool sgn = siz.is_signed(0);
+
+    /* The (components x height x width x bytes) product below is computed and
+       malloc'd by this wrapper, so an unchecked overflow would under-allocate.
+       OpenJPH validates individual SIZ fields but does not bound total image
+       area, so reject zero/overflowing/absurd dimensions from untrusted input. */
+    if (comp == 0 || w == 0 || h == 0)
+      throw std::runtime_error("Decoded image has a zero dimension");
+    const size_t bytes_per_sample = (bd <= 8) ? 1u : (bd <= 16) ? 2u : 4u;
+    const size_t total_bytes =
+        checked_mul(checked_mul(checked_mul(comp, h), w), bytes_per_sample);
+    constexpr size_t kMaxDecodeBytes = size_t(1) << 33; // 8 GiB sanity cap
+    if (total_bytes > kMaxDecodeBytes)
+      throw std::runtime_error("Decoded image exceeds the size limit");
 
     *out_bit_depth = bd;
     *out_is_signed = sgn ? 1 : 0;
@@ -324,7 +361,7 @@ int decode_impl_c(const uint8_t *codestream_data, size_t codestream_len,
 
     codestream.close();
 
-    const size_t bytes_per_sample = (bd <= 8) ? 1u : (bd <= 16) ? 2u : 4u;
+    // bytes_per_sample and the element total were validated against overflow above.
     const size_t total = info.components * info.height * info.width;
 
     *out = static_cast<uint8_t *>(decoded);

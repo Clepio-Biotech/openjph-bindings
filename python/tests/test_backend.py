@@ -29,6 +29,28 @@ def test_public_api_importable() -> None:
     assert openjph.decode is _backend.decode
 
 
+def test_ctypes_struct_layout_matches_c_abi() -> None:
+    # The ctypes structs must match the C structs in native/include/openjph_c.h.
+    # Both C structs are naturally aligned with no padding, so ctypes' computed
+    # size must equal the sum of field sizes — this catches a field-type drift
+    # (e.g. size_t vs int) that would silently corrupt the FFI.
+    import ctypes
+
+    from openjph import _backend
+
+    def sum_field_sizes(struct: type[ctypes.Structure]) -> int:
+        return sum(ctypes.sizeof(t) for _, t in struct._fields_)
+
+    assert ctypes.sizeof(_backend._Array) == sum_field_sizes(_backend._Array)
+    assert ctypes.sizeof(_backend._EncodeParams) == sum_field_sizes(
+        _backend._EncodeParams
+    )
+    # dims[3] in C is mirrored as three contiguous size_t fields dim0/dim1/dim2.
+    sz = ctypes.sizeof(ctypes.c_size_t)
+    assert _backend._Array.dim1.offset - _backend._Array.dim0.offset == sz
+    assert _backend._Array.dim2.offset - _backend._Array.dim1.offset == sz
+
+
 def test_roundtrip_2d() -> None:
     data = _make_uint16((32, 48))
 
@@ -63,6 +85,26 @@ def test_roundtrip_3d() -> None:
     decoded = openjph_backend.decode(encoded)
 
     np.testing.assert_array_equal(decoded, data)
+
+
+def test_roundtrip_3d_stack_distinct_slices() -> None:
+    # A 3-D array whose leading dimension is a stack of *independent* slices
+    # (a volumetric stack, NOT a color transform) must round-trip each slice
+    # exactly into a single codestream.
+    Z, Y, X = 8, 24, 32
+    data = np.stack(
+        [
+            np.full((Y, X), s * 1000, np.uint16)
+            + (np.arange(Y * X, dtype=np.uint16).reshape(Y, X) % 500)
+            for s in range(Z)
+        ]
+    )
+    decoded = openjph_backend.decode(openjph_backend.encode(data, planar=True))
+
+    assert decoded.shape == data.shape
+    for s in range(Z):
+        np.testing.assert_array_equal(decoded[s], data[s])
+    assert len({decoded[s].tobytes() for s in range(Z)}) == Z  # slices distinct
 
 
 def test_irreversible_uint16_roundtrip() -> None:

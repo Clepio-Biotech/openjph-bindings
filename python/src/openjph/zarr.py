@@ -10,6 +10,8 @@ import numpy as np
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.common import JSON, parse_named_configuration
 
+from openjph._constants import PROGRESSION_ORDERS
+
 if TYPE_CHECKING:
     from typing import Self
 
@@ -21,7 +23,7 @@ if TYPE_CHECKING:
 
 Layout = Literal["yx", "zyx", "cyx", "yxc"]
 ProgressionOrder = Literal["LRCP", "RLCP", "RPCL", "PCRL", "CPRL"]
-_SUPPORTED_PROGRESSIONS = {"LRCP", "RLCP", "RPCL", "PCRL", "CPRL"}
+_SUPPORTED_PROGRESSIONS = set(PROGRESSION_ORDERS)
 _BACKEND_MODULE_NAME = "openjph._backend"
 
 
@@ -67,7 +69,7 @@ def _get_backend() -> _OpenJPHBackend:
             return _backend_cache
 
     raise OpenJPHCodecUnavailableError(
-        "OpenJPHCodec requires the native openjph._openjph backend module."
+        "OpenJPHCodec requires the native openjph._backend module."
     )
 
 
@@ -140,6 +142,9 @@ def _denormalize_from_backend(data: np.ndarray, layout: Layout) -> np.ndarray:
 
 
 def _supported_native_dtype(native: np.dtype) -> bool:
+    # The codec deliberately restricts to uint8/uint16/int16 — the integer types
+    # that are well-behaved through HTJ2K for imaging data. The low-level backend
+    # additionally accepts int8/uint32/int32, but those are not exposed here.
     if np.issubdtype(native, np.integer):
         return native in {np.dtype("uint8"), np.dtype("uint16"), np.dtype("int16")}
     return False
@@ -166,7 +171,7 @@ class OpenJPHCodec(ArrayBytesCodec):
         qstep: float | None = None,
         num_decompositions: int | None = None,
         block_size: tuple[int, int] = (64, 64),
-        progression_order: ProgressionOrder | str = "CPRL",
+        progression_order: ProgressionOrder | str = "LRCP",
         color_transform: bool | None = None,
         planar: bool | None = None,
     ) -> None:
@@ -180,7 +185,10 @@ class OpenJPHCodec(ArrayBytesCodec):
             raise ValueError(
                 f"num_decompositions must be >= 0, got {num_decompositions}"
             )
-        if qstep is not None and irreversible is False:
+        # Fail eagerly for any non-irreversible setting (including the default
+        # None, which evolve_from_array_spec resolves to False), so a bare codec
+        # object raises at construction rather than only at array-creation time.
+        if qstep is not None and irreversible is not True:
             raise ValueError("qstep is only valid for irreversible encoding")
 
         object.__setattr__(self, "layout", normalized_layout)
@@ -226,7 +234,6 @@ class OpenJPHCodec(ArrayBytesCodec):
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         updates: dict[str, object] = {}
         layout = self.layout or _default_layout(array_spec.shape)
-        native = array_spec.dtype.to_native_dtype()
 
         if self.layout is None:
             updates["layout"] = layout
@@ -240,10 +247,14 @@ class OpenJPHCodec(ArrayBytesCodec):
         resolved_color_transform = cast(
             "bool", updates.get("color_transform", self.color_transform)
         )
+        # planar default is derived as (not color_transform):
+        #   - non-color data, including 3-D z-stacks (layout 'zyx'): planar=True, so
+        #     each component/slice is stored as its own plane — independent slices,
+        #     NOT a color transform. This is the volumetric-stack path.
+        #   - color data (3 components + MCT): planar=False, component-interleaved.
+        # (This deliberately differs from the raw backend default of planar=True.)
         if self.planar is None:
             updates["planar"] = not resolved_color_transform
-
-        del native
 
         if not updates:
             return self
@@ -351,6 +362,10 @@ class OpenJPHCodec(ArrayBytesCodec):
                 "OpenJPH backend returned an unexpected shape: "
                 f"expected {chunk_spec.shape}, got {arr.shape}"
             )
+        # The backend infers dtype from the codestream's SIZ marker, so for a
+        # validated array this astype is a no-op; it only guards against a
+        # backend/metadata disagreement (and never silently widens, since the
+        # codestream stores the exact bit-depth/signedness it was written with).
         if arr.dtype != native_dtype:
             arr = arr.astype(native_dtype, copy=False)
 
@@ -361,4 +376,10 @@ class OpenJPHCodec(ArrayBytesCodec):
         _input_byte_length: int,
         _chunk_spec: ArraySpec,
     ) -> int:
+        # HTJ2K output is variable-length, so the encoded size is not known ahead
+        # of time. Raising NotImplementedError is the documented contract for a
+        # variable-length codec (cf. zarr's built-in vlen codecs) and is never
+        # called on the normal read/write path. The codec works fine as a chunk
+        # data codec, including inside a shard; it simply cannot serve as a shard
+        # *index* codec (which must be fixed-size).
         raise NotImplementedError("OpenJPH produces variable-length codestreams")

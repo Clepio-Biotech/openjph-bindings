@@ -44,7 +44,7 @@ extern "C" {
 /* Encode an array to an HTJ2K codestream.
    On success returns 0, sets *out and *out_len. Caller must free *out with
    openjph_free(). On failure returns -1, writes a null-terminated message into
-   err_buf. */
+   err_buf. err_buf must be non-NULL and err_buf_len > 0. */
 OPENJPH_API int openjph_encode(const openjph_array_t *img,
                                const openjph_encode_params_t *params,
                                uint8_t **out, size_t *out_len, char *err_buf,
@@ -55,7 +55,8 @@ OPENJPH_API int openjph_encode(const openjph_array_t *img,
    dtype needed. On success returns 0, sets
    out, out_len, out_ndim, out_dims, out_bit_depth, out_is_signed. Caller must
    free *out with openjph_free(). On failure returns -1, writes a
-   null-terminated message into err_buf. */
+   null-terminated message into err_buf. err_buf must be non-NULL and
+   err_buf_len > 0. */
 OPENJPH_API int openjph_decode(const uint8_t *codestream, size_t codestream_len,
                                uint8_t **out, size_t *out_len, size_t *out_ndim,
                                size_t out_dims[3], uint32_t *out_bit_depth,

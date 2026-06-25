@@ -43,7 +43,9 @@ P1 is triggered by setting `NATIVE_PATH` to the path of a local `native/` direct
   NATIVE_PATH=/path/to/openjph-bindings/native
   ```
 
-Developers working inside this monorepo typically set `NATIVE_PATH=$(pwd)/native` once and use it for both packages.
+Inside this monorepo `NATIVE_PATH` is **optional**: the Julia `build.jl` and the Python
+`CMakeLists.txt` both auto-detect the sibling `native/` directory, so a fresh monorepo build works
+with no environment variable. Set `NATIVE_PATH` only to point at a `native/` directory elsewhere.
 
 ---
 
@@ -51,19 +53,19 @@ Developers working inside this monorepo typically set `NATIVE_PATH=$(pwd)/native
 
 ### Prerequisites
 
-- cmake ≥ 3.18 and a C++17 compiler (for P1/P2 builds)
+- cmake ≥ 3.24 and a C++17 compiler (for P1/P2 builds)
 - Julia ≥ 1.9
 - Python ≥ 3.12
 
 ### Julia
 
 ```bash
-# P1: build from local native/ (fastest for monorepo development)
-NATIVE_PATH=$(pwd)/native julia --project=julia/OpenJPH.jl -e 'import Pkg; Pkg.build("OpenJPH")'
+# Build from the sibling native/ (auto-detected in the monorepo — no NATIVE_PATH needed)
+julia --project=julia/OpenJPH.jl -e 'import Pkg; Pkg.build("OpenJPH")'
 
-# Run tests
-julia --project=julia/OpenJPH.jl   -e 'import Pkg; Pkg.test("OpenJPH")'
-julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.test("ZarrCompressorJPH")'
+# Run tests (Pkg.test with no argument tests the active project's package)
+julia --project=julia/OpenJPH.jl           -e 'import Pkg; Pkg.test()'
+julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.test()'
 ```
 
 ### Python
