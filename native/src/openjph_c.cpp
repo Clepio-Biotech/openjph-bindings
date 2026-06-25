@@ -253,9 +253,9 @@ int encode_impl_c(const openjph_array_t *img,
       cod.set_num_decomposition(clamped);
       cod.set_block_dims(static_cast<ojph::ui32>(params->block_width),
                          static_cast<ojph::ui32>(params->block_height));
-      // set_progression_order() strlen's its argument, but progression_order is a
-      // fixed char[8] that callers may fill completely (no terminator). Copy into
-      // a NUL-terminated local to avoid an out-of-bounds read.
+      // set_progression_order() strlen's its argument, but progression_order is
+      // a fixed char[8] that callers may fill completely (no terminator). Copy
+      // into a NUL-terminated local to avoid an out-of-bounds read.
       char po[9];
       std::memcpy(po, params->progression_order, 8);
       po[8] = '\0';
@@ -308,7 +308,8 @@ int decode_impl_c(const uint8_t *codestream_data, size_t codestream_len,
 
     ojph::codestream codestream;
     // Decode planarity is dictated by the codestream's color-transform flag and
-    // is set inside read_headers(); an explicit set_planar() here is overwritten.
+    // is set inside read_headers(); an explicit set_planar() here is
+    // overwritten.
     codestream.read_headers(&infile);
 
     /* Read shape and element type from the codestream SIZ marker. */
@@ -322,7 +323,8 @@ int decode_impl_c(const uint8_t *codestream_data, size_t codestream_len,
     /* The (components x height x width x bytes) product below is computed and
        malloc'd by this wrapper, so an unchecked overflow would under-allocate.
        OpenJPH validates individual SIZ fields but does not bound total image
-       area, so reject zero/overflowing/absurd dimensions from untrusted input. */
+       area, so reject zero/overflowing/absurd dimensions from untrusted input.
+     */
     if (comp == 0 || w == 0 || h == 0)
       throw std::runtime_error("Decoded image has a zero dimension");
     const size_t bytes_per_sample = (bd <= 8) ? 1u : (bd <= 16) ? 2u : 4u;
@@ -361,7 +363,8 @@ int decode_impl_c(const uint8_t *codestream_data, size_t codestream_len,
 
     codestream.close();
 
-    // bytes_per_sample and the element total were validated against overflow above.
+    // bytes_per_sample and the element total were validated against overflow
+    // above.
     const size_t total = info.components * info.height * info.width;
 
     *out = static_cast<uint8_t *>(decoded);

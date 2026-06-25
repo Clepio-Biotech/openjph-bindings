@@ -73,7 +73,10 @@ jobs:
       - name: Install pyopenjph
         env:
           NATIVE_PATH: ${{ github.workspace }}/native
-        run: python -m pip install -e "./python[zarr]"
+        # Non-editable install so the built libopenjph_c.so is copied next to
+        # _backend.py (a scikit-build-core editable install leaves it in a build
+        # dir where the loader can't find it).
+        run: python -m pip install "./python[zarr]"
       - name: Build Julia packages
         run: julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.build("OpenJPH")'
       - name: Cross-language Zarr interop
