@@ -9,16 +9,45 @@ This repo ships its native library (`libopenjph_c`) to two ecosystems:
   Pkg. These are **recycled from the wheels** (`tools/extract_native_from_wheels.sh` pulls the lib
   cibuildwheel already built), not a separate build — valid because OpenJPH is statically embedded.
 
-## Current state (pre-first-release)
+## Current state (branch `ds-init`, bound to a frozen snapshot)
 
-Until a multi-platform release exists, the Julia side resolves the native lib **locally**:
+The consumer switch IS applied, bound to the immutable **`binaries-snapshot`** release:
 
-- Monorepo development: `OpenJPH.jl/deps/build.jl` auto-detects the sibling `native/` and builds it
-  (no `NATIVE_PATH`, no network). `ZarrCompressorJPH` finds `OpenJPH` via `[sources] {path = ...}`.
-- This works today and is what CI exercises.
+- `OpenJPH.jl` loads the native lib from a **local build override** if one exists (produced by
+  `deps/build.jl` from `NATIVE_PATH` or the in-monorepo `native/`), otherwise from
+  `artifact"libopenjph_c"` — `Artifacts.toml` binds all five platforms to the `binaries-snapshot`
+  tarballs.
+- Monorepo development still uses the local build (no artifact download); only a **standalone
+  consumer** (e.g. a downstream package pulling OpenJPH from GitHub) uses the artifact.
 
-The producer CI (the `publish-native` job in `wheels.yml`) and the consumer switch below are
-**not yet applied** end-to-end — they activate once a real multi-platform release exists.
+**Why a snapshot:** `binaries-snapshot` is a GitHub release on a **non-`v` tag**, so it triggers no
+CI and is never rebuilt — its assets' `sha256` are constant, so `Artifacts.toml` stays valid no
+matter how much `ds-init` is pushed. (The PR's own `dev-pr-3` pre-release *does* rebuild on every
+push and must NOT be used for a committed `Artifacts.toml`.)
+
+**To refresh the snapshot** (only when you intentionally want downstream to pick up new binaries —
+e.g. after a real change to the C layer), rebuild via a PR push, then:
+```bash
+# copy the latest dev-pr-3 tarballs into the snapshot (drop the -dev suffix), then:
+gh release upload binaries-snapshot libopenjph_c-*-*.tar.gz --clobber
+julia --project=@artifactgen tools/gen_artifacts.jl binaries-snapshot   # needs ArtifactUtils
+# commit the updated julia/OpenJPH.jl/Artifacts.toml
+```
+When you cut a real `v*` tag, regenerate against it (`gen_artifacts.jl v0.1.0`) and delete the
+snapshot.
+
+### Consuming these from a downstream package (on the branch)
+
+`[sources]` is only honoured for the **top-level** project, not for a dependency — so a downstream
+package must declare **both** modules in its own `Project.toml`:
+```toml
+[sources]
+OpenJPH          = {url = "https://github.com/Clepio-Biotech/openjph-bindings", subdir = "julia/OpenJPH.jl",          rev = "ds-init"}
+ZarrCompressorJPH = {url = "https://github.com/Clepio-Biotech/openjph-bindings", subdir = "julia/ZarrCompressorJPH.jl", rev = "ds-init"}
+```
+The downstream then resolves both from GitHub; OpenJPH supplies its binary via `Artifacts.toml`
+(the `dev-pr-3` artifact). This requires the OpenJPH artifact-loading code + `Artifacts.toml` to be
+**pushed to `ds-init`**.
 
 ## Activating Artifacts-based distribution (the D6 consumer switch)
 

@@ -1,23 +1,24 @@
 module OpenJPH
 
 using Libdl
+using Artifacts, LazyArtifacts
 
+const _dlext     = Sys.iswindows() ? "dll" : Sys.isapple() ? "dylib" : "so"
 const _deps_file = joinpath(@__DIR__, "..", "deps", "deps.jl")
 
-if isfile(_deps_file)
-    include(_deps_file)   # defines: const libopenjph_c_name, const libopenjph
+# Resolve the native library. A local build (produced by deps/build.jl from
+# NATIVE_PATH or the in-monorepo native/ source) takes precedence so the C layer
+# can be developed in place; otherwise Pkg supplies the right per-platform binary
+# from Artifacts.toml. deps.jl records only the basename, resolved relative to
+# deps/ at load time so a local override stays relocatable.
+const libopenjph_c = if isfile(_deps_file)
+    include(_deps_file)   # defines const libopenjph_c_name
+    joinpath(@__DIR__, "..", "deps", libopenjph_c_name)
 else
-    error("OpenJPH not built. Run `import Pkg; Pkg.build(\"OpenJPH\")`.")
+    joinpath(artifact"libopenjph_c", "libopenjph_c.$(_dlext)")
 end
 
-# deps.jl records only the library's basename; resolve it relative to deps/ at
-# load time so the package stays relocatable (a moved depot / shared precompile
-# cache must not break loading).
-const libopenjph_c = joinpath(@__DIR__, "..", "deps", libopenjph_c_name)
-
-# When libopenjph was statically linked into libopenjph_c, deps.jl sets
-# libopenjph = "" and we skip the separate dlopen — there is nothing to load.
-isempty(libopenjph) || Libdl.dlopen(libopenjph, Libdl.RTLD_GLOBAL | Libdl.RTLD_LAZY)
+# OpenJPH is statically embedded in libopenjph_c — no separate library to load.
 Libdl.dlopen(libopenjph_c, Libdl.RTLD_GLOBAL | Libdl.RTLD_LAZY)
 
 # ---- C struct mirrors ----

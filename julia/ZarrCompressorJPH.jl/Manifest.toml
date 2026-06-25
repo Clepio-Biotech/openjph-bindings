@@ -183,6 +183,11 @@ weakdeps = ["Serialization"]
     [deps.LRUCache.extensions]
     SerializationExt = ["Serialization"]
 
+[[deps.LazyArtifacts]]
+deps = ["Artifacts", "Pkg"]
+uuid = "4af54fe1-eca0-43a8-85a7-787d91b784e3"
+version = "1.11.0"
+
 [[deps.LibCURL]]
 deps = ["LibCURL_jll", "MozillaCACerts_jll"]
 uuid = "b27032c2-a3e7-50c8-80cd-2d36dbcbfd21"
@@ -269,7 +274,7 @@ version = "1.17.0"
     Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 
 [[deps.OpenJPH]]
-deps = ["Downloads", "Libdl"]
+deps = ["Artifacts", "LazyArtifacts", "Libdl"]
 path = "../OpenJPH.jl"
 uuid = "8c589a84-a498-4fe3-acea-e589744a4834"
 version = "0.1.0"

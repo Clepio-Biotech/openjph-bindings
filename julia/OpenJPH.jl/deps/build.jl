@@ -1,14 +1,11 @@
-import Libdl
-import Downloads
-
 const _dlext  = Sys.iswindows() ? "dll" : Sys.isapple() ? "dylib" : "so"
 const lib_out = joinpath(@__DIR__, "libopenjph_c.$(_dlext)")
 const deps_jl = joinpath(@__DIR__, "deps.jl")
 
-# Pinned openjph-bindings release — update when a new release is cut.
+# The release tag whose binaries OpenJPH.jl/Artifacts.toml should track. Kept in
+# sync with the package version by tests/check_versions.sh.
 const BINDINGS_VERSION  = "v0.1.0"
 const BINDINGS_REPO_URL = "https://github.com/Clepio-Biotech/openjph-bindings"
-const RELEASE_BASE_URL  = "$(BINDINGS_REPO_URL)/releases/download/$(BINDINGS_VERSION)"
 
 # ---- helpers ----------------------------------------------------------------
 
@@ -37,28 +34,8 @@ function write_deps_jl()
         # Record only the basename; OpenJPH.jl resolves it relative to deps/ at
         # load time so the package stays relocatable.
         println(io, "const libopenjph_c_name = $(repr(basename(lib_out)))")
-        println(io, "const libopenjph        = \"\"")   # OpenJPH is statically embedded
     end
 end
-
-# ---- Priority 0: download pre-built .so from GitHub Release -----------------
-
-function download_prebuilt()
-    (Sys.islinux() && Sys.ARCH == :x86_64) || return false
-    url = "$(RELEASE_BASE_URL)/libopenjph_c-linux-x86_64.so"
-    try
-        @info "Downloading pre-built libopenjph_c..." url
-        Downloads.download(url, lib_out)
-        @info "Download complete." path=lib_out
-        return true
-    catch err
-        @warn "Download failed, falling back to source build." err
-        isfile(lib_out) && rm(lib_out)
-        return false
-    end
-end
-
-# ---- cmake build (shared by P1 and P2) -------------------------------------
 
 function build_cmake_native(native_src_dir)
     cmake = Sys.which("cmake")
@@ -87,36 +64,12 @@ function build_cmake_native(native_src_dir)
     @info "Build complete." lib=lib_out
 end
 
-# ---- Priority 2: download openjph-bindings from GitHub, build native/ ------
-
-function download_and_build_native()
-    ver_bare = replace(BINDINGS_VERSION, r"^v" => "")   # "v0.1.0" → "0.1.0"
-    url      = "$(BINDINGS_REPO_URL)/archive/refs/tags/$(BINDINGS_VERSION).tar.gz"
-    tarball  = joinpath(@__DIR__, "openjph-bindings-$(ver_bare).tar.gz")
-    src_root = joinpath(@__DIR__, "openjph-bindings-$(ver_bare)")
-
-    if !isdir(src_root)
-        Sys.which("tar") === nothing && error(
-            "tar is required to extract the source archive but was not found on PATH.")
-        @info "Downloading openjph-bindings $(BINDINGS_VERSION)..." url
-        Downloads.download(url, tarball)
-        run(`tar -xzf $tarball -C $(@__DIR__)`)
-        rm(tarball)
-        # GitHub archives extract to "<repo>-<tag-without-v>/"
-        extracted = joinpath(@__DIR__, "openjph-bindings-$(ver_bare)")
-        isdir(extracted) || error("Expected extracted directory not found: $extracted")
-    else
-        @info "Using previously downloaded openjph-bindings." path=src_root
-    end
-
-    native_dir = joinpath(src_root, "native")
-    isdir(native_dir) || error(
-        "native/ subdirectory not found inside downloaded archive at $native_dir")
-
-    build_cmake_native(native_dir)
-end
-
 # ---- resolve ----------------------------------------------------------------
+#
+# The per-platform binary is normally supplied by Pkg via OpenJPH.jl/Artifacts.toml.
+# build.jl only produces a *local* build that overrides the artifact, so the C
+# layer can be developed in place: from NATIVE_PATH, or the in-monorepo native/
+# source. With neither present there is nothing to build (the artifact is used).
 
 dotenv      = read_dotenv(joinpath(@__DIR__, "..", ".env"))
 native_path = get(ENV, "NATIVE_PATH", get(dotenv, "NATIVE_PATH", ""))
@@ -125,32 +78,24 @@ native_path = get(ENV, "NATIVE_PATH", get(dotenv, "NATIVE_PATH", ""))
 const sibling_native = normpath(joinpath(@__DIR__, "..", "..", "..", "native"))
 
 if !isempty(native_path)
-    # Explicit override wins: developer set NATIVE_PATH to a local native/ directory.
+    # Explicit override: developer set NATIVE_PATH to a local native/ directory.
     isdir(native_path) || error(
         "NATIVE_PATH is set to \"$native_path\" but the directory does not exist.")
-    @info "Building from NATIVE_PATH." path=native_path
+    @info "Building local override from NATIVE_PATH." path=native_path
     build_cmake_native(native_path)
     write_deps_jl()
-    @info "Build complete (NATIVE_PATH)." lib=lib_out
+    @info "Build complete (NATIVE_PATH override)." lib=lib_out
 
 elseif isdir(sibling_native)
-    # In-monorepo development: build from the sibling native/ source. Makes a fresh
-    # monorepo build "just work" with no env var and no network/release.
-    @info "Building from in-monorepo native/." path=sibling_native
+    # In-monorepo development: build a local override from the sibling native/.
+    @info "Building local override from in-monorepo native/." path=sibling_native
     build_cmake_native(sibling_native)
     write_deps_jl()
-    @info "Build complete (sibling native/)." lib=lib_out
-
-elseif download_prebuilt()
-    # Fallback prebuilt download. Binary distribution will move to Pkg Artifacts
-    # (Artifacts.toml) — this branch is a stopgap until that lands.
-    write_deps_jl()
-    @info "Build complete (pre-built binary)." lib=lib_out
+    @info "Build complete (sibling native/ override)." lib=lib_out
 
 else
-    # Last resort: download the openjph-bindings source from GitHub and build it.
-    @info "No NATIVE_PATH, no sibling native/, no prebuilt. Downloading source $(BINDINGS_VERSION) from GitHub..."
-    download_and_build_native()
-    write_deps_jl()
-    @info "Build complete (downloaded source)." lib=lib_out
+    # No local source: the binary comes from Pkg's Artifacts.toml — nothing to
+    # build. Remove any stale local override so OpenJPH.jl uses the artifact.
+    isfile(deps_jl) && rm(deps_jl)
+    @info "No NATIVE_PATH or in-monorepo native/; using the prebuilt binary from Artifacts.toml."
 end

@@ -25,10 +25,12 @@ const TARGETS = [
     ("windows-x86_64", Platform("x86_64",  "windows")),
 ]
 
-function main(tag::AbstractString)
+# `asset_suffix` is "" for a tagged release (libopenjph_c-<stem>.tar.gz) and
+# "-dev" for a PR dev pre-release (libopenjph_c-<stem>-dev.tar.gz).
+function main(tag::AbstractString, asset_suffix::AbstractString = "")
     isfile(ARTIFACTS_TOML) && rm(ARTIFACTS_TOML)
     for (stem, platform) in TARGETS
-        url = "$(REPO)/releases/download/$(tag)/libopenjph_c-$(stem).tar.gz"
+        url = "$(REPO)/releases/download/$(tag)/libopenjph_c-$(stem)$(asset_suffix).tar.gz"
         @info "Binding libopenjph_c" platform url
         # Downloads the tarball, computes its tree hash + sha256, and records a
         # lazy, platform-constrained binding in Artifacts.toml.
@@ -38,4 +40,5 @@ function main(tag::AbstractString)
     @info "Wrote $(ARTIFACTS_TOML)"
 end
 
-main(isempty(ARGS) ? error("usage: gen_artifacts.jl <release-tag>  e.g. v0.1.0") : ARGS[1])
+isempty(ARGS) && error("usage: gen_artifacts.jl <release-tag> [asset-suffix]  e.g. v0.1.0  |  dev-pr-3 -dev")
+main(ARGS[1], length(ARGS) >= 2 ? ARGS[2] : "")
