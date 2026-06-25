@@ -41,6 +41,9 @@ wheel.packages = ["src/openjph"]
 
 [tool.cibuildwheel]
 build = "cp312-* cp313-*"
+# musllinux (Alpine/musl libc) is unnecessary for this scientific package and
+# doubles the Linux build count — skip it.
+skip = "*-musllinux*"
 test-extras = ["test", "zarr"]
 test-command = "pytest {package}/tests"
 

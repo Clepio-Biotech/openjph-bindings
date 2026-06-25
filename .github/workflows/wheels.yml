@@ -15,9 +15,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            archs: "x86_64 aarch64"
-            arch_label: "x86_64-aarch64"
+          - os: ubuntu-latest        # native x86_64
+            archs: "x86_64"
+            arch_label: "x86_64"
+          - os: ubuntu-24.04-arm     # native aarch64 runner — no QEMU emulation
+            archs: "aarch64"
+            arch_label: "aarch64"
           - os: macos-15-intel
             archs: "x86_64"
             arch_label: "x86_64"
@@ -29,10 +32,6 @@ jobs:
             arch_label: "AMD64"
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-qemu-action@v4
-        if: runner.os == 'Linux'
-        with:
-          platforms: arm64
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
