@@ -5,8 +5,12 @@ tiles, and records a few cheap features per tile. From those it assigns, per
 channel, a structural ``group`` (background / sparse-signal / dense-signal):
 how much of the tile carries signal (coverage), data-driven via Otsu cuts —
 background = low dynamic range; among signal tiles, dense = high foreground
-coverage, sparse = low. Output is ``census.csv``, one row per tile, keyed by
-``(channel, z, tile_y, tile_x)`` so benchmark/plots can join.
+coverage, sparse = low. Coverage (``fg_frac``) is the fraction of a tile's
+pixels above a *global* per-channel signal floor (median + k.MAD over a pooled
+pixel sample), so it measures absolute brightness coverage: a tile uniformly
+full of signal is dense, a few bright spots on dark is sparse. Output is
+``census.csv``, one row per tile, keyed by ``(channel, z, tile_y, tile_x)`` so
+benchmark/plots can join.
 
 Usage::
 
@@ -69,12 +73,14 @@ def read_tile_region(path: str | Path, y: int, x: int, ts: int) -> np.ndarray:
         return np.ascontiguousarray(read_slice(path)[y : y + ts, x : x + ts])
 
 
-def slice_features(arr: np.ndarray, ts: int) -> dict[str, np.ndarray]:
+def slice_features(arr: np.ndarray, ts: int, threshold: float) -> dict[str, np.ndarray]:
     """Vectorized per-tile features for one slice, cut into ``ts`` x ``ts`` tiles.
 
     Returns arrays (one element per tile) for tile_y, tile_x and the four
     features. Tiles are flattened to (n_tiles, ts*ts) so every feature is a
-    single C-level reduction over all tiles at once.
+    single C-level reduction over all tiles at once. ``fg_frac`` is the fraction
+    of pixels above the global per-channel signal ``threshold`` (absolute
+    coverage, not conspicuity above the tile's own level).
     """
     h, w = arr.shape
     ny, nx = h // ts, w // ts
@@ -87,9 +93,7 @@ def slice_features(arr: np.ndarray, ts: int) -> dict[str, np.ndarray]:
     )
     med = np.median(tiles, axis=1)
     p1, p99, p999 = np.percentile(tiles, [1.0, 99.0, 99.9], axis=1)
-    mad = np.median(np.abs(tiles - med[:, None]), axis=1)
-    # Foreground = above the tile's own noise floor (median + 5 robust sigma).
-    fg_frac = np.mean(tiles > (med + 5.0 * 1.4826 * mad)[:, None], axis=1)
+    fg_frac = np.mean(tiles > threshold, axis=1)
     cell = np.arange(ny * nx)
     return {
         "tile_y": (cell // nx) * ts,
@@ -101,10 +105,40 @@ def slice_features(arr: np.ndarray, ts: int) -> dict[str, np.ndarray]:
     }
 
 
-def _scan_one(task: tuple[str, str, int, int]) -> dict:
-    """Worker: feature-scan one slice. ``task`` is (channel, path, z, tile_size)."""
-    channel, path, z, ts = task
-    feats = slice_features(read_slice(path), ts)
+def estimate_signal_floor(
+    files: list[Path],
+    n_slices: int = 16,
+    per_slice: int = 200_000,
+    k: float = 5.0,
+    seed: int = 0,
+) -> float:
+    """Global signal floor for a channel: ``median + k . 1.4826 . MAD`` over a
+    pooled pixel sample (a few evenly spaced slices, randomly subsampled).
+
+    This is the per-tile noise-floor idea made global, so coverage is measured
+    against the channel's background rather than each tile's own level.
+    """
+    rng = np.random.default_rng(seed)
+    idx = np.unique(
+        np.linspace(0, len(files) - 1, min(n_slices, len(files))).astype(int)
+    )
+    pool = []
+    for i in idx:
+        flat = read_slice(files[i]).ravel()
+        if flat.size > per_slice:
+            flat = flat[rng.integers(0, flat.size, per_slice)]
+        pool.append(flat.astype(np.float64))
+    pooled = np.concatenate(pool)
+    med = np.median(pooled)
+    mad = np.median(np.abs(pooled - med))
+    return float(med + k * 1.4826 * mad)
+
+
+def _scan_one(task: tuple[str, str, int, int, float]) -> dict:
+    """Worker: feature-scan one slice. ``task`` is
+    (channel, path, z, tile_size, signal_floor)."""
+    channel, path, z, ts, threshold = task
+    feats = slice_features(read_slice(path), ts, threshold)
     feats["channel"] = channel
     feats["z"] = z
     return feats
@@ -178,6 +212,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Scan every Nth slice (1 = whole sample).",
     )
     p.add_argument("--num-workers", type=int, default=1)
+    p.add_argument(
+        "--signal-k",
+        type=float,
+        default=5.0,
+        help="Global signal floor = median + k.1.4826.MAD over a pixel sample.",
+    )
     p.add_argument("--out", default="bench_out/census.csv")
     return p
 
@@ -186,14 +226,16 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     channels = parse_channels(args.channel)
 
-    tasks: list[tuple[str, str, int, int]] = []
+    tasks: list[tuple[str, str, int, int, float]] = []
     for channel, folder in channels.items():
         files = list_tiffs(folder)
         if not files:
             raise SystemExit(f"No TIFF files in {folder} for channel {channel}")
+        floor = estimate_signal_floor(files, k=args.signal_k)
+        print(f"[{channel}] global signal floor = {floor:.1f}")
         for z, path in enumerate(files):
             if z % args.z_stride == 0:
-                tasks.append((channel, str(path), z, args.tile_size))
+                tasks.append((channel, str(path), z, args.tile_size, floor))
     print(f"Scanning {len(tasks)} slices across {len(channels)} channels...")
 
     if args.num_workers == 1:
