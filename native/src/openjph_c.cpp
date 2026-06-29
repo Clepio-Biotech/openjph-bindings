@@ -361,13 +361,19 @@ int decode_impl_c(const uint8_t *codestream_data, size_t codestream_len,
     else
       decoded = decode_to_buffer<int32_t>(codestream, info);
 
+    // Guard the C-allocated buffer across codestream.close(): if close()
+    // throws, the buffer is freed; on success ownership is released to the
+    // caller (who frees it via openjph_free).
+    std::unique_ptr<void, decltype(&std::free)> decoded_guard(decoded,
+                                                              &std::free);
+
     codestream.close();
 
     // bytes_per_sample and the element total were validated against overflow
     // above.
     const size_t total = info.components * info.height * info.width;
 
-    *out = static_cast<uint8_t *>(decoded);
+    *out = static_cast<uint8_t *>(decoded_guard.release());
     *out_len = total * bytes_per_sample;
 
     *out_ndim = info.ndim;
