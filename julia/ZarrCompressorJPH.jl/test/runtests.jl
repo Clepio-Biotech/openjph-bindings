@@ -59,7 +59,6 @@ import JSON
 
     @testset "codec registered with Zarr" begin
         @test haskey(V3Codecs.codec_parsers, "openjph_htj2k")
-        @test haskey(V3Codecs.codec_parsers, "htj2k")   # legacy alias kept for reads
     end
 
     @testset "codec_encode / codec_decode — 2D UInt16 lossless" begin

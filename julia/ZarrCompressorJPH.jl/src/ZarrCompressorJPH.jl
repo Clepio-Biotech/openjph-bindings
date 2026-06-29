@@ -141,9 +141,6 @@ function _parse_htj2k_config(config)
 end
 
 function __init__()
-    V3Codecs.register_codec("htj2k", HTJ2KCodec) do config, _
-        _parse_htj2k_config(config)
-    end
     V3Codecs.register_codec("openjph_htj2k", HTJ2KCodec) do config, _
         _parse_htj2k_config(config)
     end
