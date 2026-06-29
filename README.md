@@ -15,27 +15,24 @@ The design principle is that `native/` is the only place where C++ touches OpenJ
 
 ---
 
-## How `libopenjph_c.so` reaches each language
+## How `libopenjph_c` reaches each language
 
-There are three ways to obtain the shared library, in order of preference:
-
-- **P0 — prebuilt binary**: use a compiled `.so` directly, no C++ toolchain needed.
-- **P1 — build from local source**: point to a `native/` directory already on disk; cmake compiles the `.so`.
-- **P2 — build from downloaded source**: fetch the `native/` source from GitHub automatically, then cmake compiles the `.so` (same as P1, but the download happens first).
-
-The two languages expose these paths differently because their packaging ecosystems work differently:
+The native library is **distributed as a prebuilt binary** to both ecosystems; building from
+source is only needed when developing the C layer itself.
 
 | | Julia | Python |
 |---|---|---|
-| **P0** | `build.jl` downloads `libopenjph_c.so` from a GitHub Release | `pip install pyopenjph` downloads a wheel that already contains `libopenjph_c.so` — cmake never runs |
-| **P1** | `build.jl` runs cmake on the directory pointed to by `NATIVE_PATH` | scikit-build-core runs cmake on `python/CMakeLists.txt`, which reads `NATIVE_PATH` and calls `add_subdirectory` |
-| **P2** | `build.jl` downloads the `openjph-bindings` source tarball, extracts `native/`, then runs cmake | `python/CMakeLists.txt` uses CMake FetchContent to clone the `openjph-bindings` repo and build `native/` |
+| **Prebuilt (default)** | Pkg downloads the right per-platform binary via `OpenJPH.jl/Artifacts.toml` from a GitHub Release — no C++ toolchain needed | `pip install pyopenjph` installs a wheel that already contains the binary — cmake never runs |
+| **Local build (override)** | set `NATIVE_PATH`, or build inside the monorepo (the sibling `native/` is auto-detected); `build.jl` runs cmake and the local build **takes precedence over the artifact** | scikit-build-core runs cmake on `python/CMakeLists.txt`, which finds `native/` via `NATIVE_PATH` → sibling → FetchContent |
 
-Julia has no wheel concept, so `build.jl` always runs at install time and must handle P0 explicitly. Python's wheel IS the prebuilt artifact — cmake only runs when building wheels (on CI) or when a user installs from source without a matching wheel for their platform.
+So a normal install needs no compiler on either side. Developers who change the C layer get a local
+build by setting `NATIVE_PATH` (or, in the monorepo, automatically from the sibling `native/`),
+which overrides the prebuilt binary. See `docs/RELEASING.md` for how the Julia binaries are built
+(recycled from the Python wheels) and published as artifacts.
 
 ### Setting `NATIVE_PATH`
 
-P1 is triggered by setting `NATIVE_PATH` to the path of a local `native/` directory. This can be done via:
+A local build (overriding the prebuilt binary) is triggered by setting `NATIVE_PATH` to the path of a local `native/` directory. This can be done via:
 
 - A shell environment variable: `NATIVE_PATH=/path/to/native`
 - A `.env` file in the package root (`julia/OpenJPH.jl/.env` or `python/.env`):
@@ -53,8 +50,8 @@ with no environment variable. Set `NATIVE_PATH` only to point at a `native/` dir
 
 ### Prerequisites
 
-- cmake ≥ 3.24 and a C++17 compiler (for P1/P2 builds)
-- Julia ≥ 1.9
+- cmake ≥ 3.24 and a C++17 compiler (only for local/source builds)
+- Julia ≥ 1.11 (for `[sources]` and Pkg Artifacts)
 - Python ≥ 3.12
 
 ### Julia
@@ -71,8 +68,10 @@ julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.test()'
 ### Python
 
 ```bash
-# P1: build from local native/ (fastest for monorepo development)
-NATIVE_PATH=$(pwd)/native pip install -e "python/[test,zarr]"
+# Build from the local native/ (auto-detected in the monorepo). A non-editable
+# install is used so the compiled libopenjph_c is placed next to the package; a
+# scikit-build-core editable install leaves it in a build dir the loader can't find.
+pip install "python/[test,zarr]"
 
 # Run tests
 cd python && pytest tests/

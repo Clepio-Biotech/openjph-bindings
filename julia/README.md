@@ -13,16 +13,24 @@ Two packages live here:
 
 ## Installation
 
-```julia
-# From the Julia REPL
-using Pkg
-Pkg.add(url="https://github.com/LimenResearch/openjph-bindings", subdir="julia/OpenJPH.jl")
-Pkg.add(url="https://github.com/LimenResearch/openjph-bindings", subdir="julia/ZarrCompressorJPH.jl")
+These packages are unregistered, so declare them via `[sources]` in your project's
+`Project.toml` (Julia ≥ 1.11). `ZarrCompressorJPH` depends on `OpenJPH`, and `[sources]`
+is only honoured for the top-level project, so list **both**:
+
+```toml
+[sources]
+OpenJPH           = {url = "https://github.com/Clepio-Biotech/openjph-bindings", subdir = "julia/OpenJPH.jl"}
+ZarrCompressorJPH = {url = "https://github.com/Clepio-Biotech/openjph-bindings", subdir = "julia/ZarrCompressorJPH.jl"}
 ```
 
-`Pkg.build("OpenJPH")` runs automatically and resolves `libopenjph_c.so` via the
-priority system described in the top-level README (prebuilt download → local source →
-downloaded source).
+```julia
+using Pkg
+Pkg.add(["OpenJPH", "ZarrCompressorJPH"])
+```
+
+`OpenJPH` supplies its native binary automatically from `Artifacts.toml` (a per-platform
+prebuilt download) — no C++ toolchain needed. Add `rev = "<tag>"` to pin a release; see
+`docs/RELEASING.md` for installing from a development branch.
 
 ## Basic usage
 
@@ -38,9 +46,11 @@ decoded = openjph_decode(encoded)
 ## Development
 
 ```bash
-# Build from the local native/ directory (fastest for monorepo work)
-NATIVE_PATH=$(pwd)/../native julia --project=OpenJPH.jl -e 'import Pkg; Pkg.build("OpenJPH")'
+# In the monorepo the sibling native/ is auto-detected (no NATIVE_PATH needed); a
+# local build overrides the artifact so you can test changes to the C layer.
+julia --project=OpenJPH.jl -e 'import Pkg; Pkg.build("OpenJPH")'
 
-julia --project=OpenJPH.jl           -e 'import Pkg; Pkg.test("OpenJPH")'
-julia --project=ZarrCompressorJPH.jl -e 'import Pkg; Pkg.test("ZarrCompressorJPH")'
+# Pkg.test with no argument tests the active project's package.
+julia --project=OpenJPH.jl           -e 'import Pkg; Pkg.test()'
+julia --project=ZarrCompressorJPH.jl -e 'import Pkg; Pkg.test()'
 ```

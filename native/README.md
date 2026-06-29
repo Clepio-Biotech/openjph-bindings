@@ -15,7 +15,8 @@ cmake --build build -j$(nproc)
 # Produces: build/libopenjph_c.so
 ```
 
-CMake downloads OpenJPH automatically via FetchContent — no prior installation needed.
+Requires cmake ≥ 3.24 (for `LINK_LIBRARY:WHOLE_ARCHIVE`). CMake downloads OpenJPH automatically
+via FetchContent — no prior installation needed.
 
 ## API
 

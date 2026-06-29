@@ -23,7 +23,7 @@ encoded = openjph.encode(
     qstep=None,
     num_decompositions=5,
     block_size=(64, 64),
-    progression_order="CPRL",
+    progression_order="LRCP",
     color_transform=False,
     planar=True,
 )
