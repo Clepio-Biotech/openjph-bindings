@@ -1,38 +1,32 @@
-# OpenJPH clipping benchmark
+# OpenJPH normalization benchmark
 
-Evaluates whether percentile/quantile **clipping + rescaling** before lossy
-OpenJPH (HTJ2K) compression improves fidelity of the bright signal in large
-uint16 microscopy data.
+Evaluates which normalization strategy (percentile clip + rescale) gives the
+best fidelity at a given compression ratio under lossy OpenJPH (HTJ2K), and
+how that depends on what kind of signal a region carries.
 
-## Layout
+## Data
 
-Data is one folder per channel; each TIFF is a single 2D z-slice:
+Data is one folder per channel; each TIFF is a 2D image
+(`/data/561/*.tif`, `/data/638/*.tif`).
 
-```
-/data/DAPI/*.tif
-/data/CD31/*.tif
-```
+## Pipeline and modules
 
-Slices are huge and numerous, so the benchmark works on representative
-**128×128 crops** (a bright-region crop plus random crops, from a spread of
-z-slices).
-
-## Modules
-
-- `sampler.py` — picks representative 128×128 crops + their metadata.
-- `metrics.py` — percentile clip/rescale, NRMSE, PSNR, ROI intensity error
-  (bright-signal mask), saturation fraction.
-- `main.py` — computes global clip bounds per (channel, condition) from the
-  pooled crops, then runs every *percentile × qstep* condition, OpenJPH lossy
-  round-trips each crop, saves originals/reconstructions as TIFFs and writes
-  `results.csv`.
-- `plot.py` — reads `results.csv`, plots compression ratio vs ROI error and vs
-  NRMSE (one pair per channel), and writes a per-channel median summary table.
+1. `census.py` — cuts every z-slice into `--tile-size` tiles and records four
+  features per tile (`median`, `p99`, `fg_frac`, `dynamic_range`). Assigns, per
+  channel, a structural group (background / sparse-signal / dense-signal, via
+  Otsu cuts): how much of the tile carries signal.
+2. `calibrate.py` — a fixed qstep gives different file sizes under different
+  clipping, so each configuration needs its own qsteps to compare at matched
+  ratio. Sweeps qstep on a few tiles and inverts the qstep→ratio curve to hit
+  target ratios spanning `--ratio-min`..`--ratio-max`.
+3. `benchmark.py` — samples tiles from the census **stratified by group**, runs
+  every `condition × qstep`, OpenJPH round-trips each, and records compression
+  ratio, NRMSE, PSNR, ROI intensity error, saturation, and **read/encode/write
+  timings**.
+4. `metrics.py` — clip/rescale and the distortion metrics.
+5. `plots.py` — three figure sets per channel (see below).
 
 ## Setup
-
-Dependencies live in the `benchmarking` group of `python/pyproject.toml`
-(`matplotlib`, `tifffile`) and are pinned in `uv.lock`:
 
 ```bash
 cd python
@@ -43,44 +37,43 @@ uv sync --group benchmarking
 
 ```bash
 cd python/benchmarking
-../.venv/bin/python main.py \
-  --channel DAPI=/data/DAPI \
-  --channel CD31=/data/CD31 \
-  --percentiles none 0.001,99.999 0.01,99.99 0.1,99.9 1,99 \
-  --qsteps 0.0005 0.001 0.003 \
-  --slices-per-channel 50 --crops-per-slice 10 \
-  --num-workers 96 \
-  --outdir bench_out
+DATA=/data; OUT=bench_out
 
-../.venv/bin/python plot.py --results bench_out/results.csv --outdir bench_out
+python census.py \
+  --channel 561=$DATA/561 --channel 638=$DATA/638 \
+  --tile-size 128 --num-workers 90 --out $OUT/census.csv
+
+python calibrate.py \
+  --channel 561=$DATA/561 --channel 638=$DATA/638 \
+  --census $OUT/census.csv \
+  --percentiles none 0,100 0.1,99.9 1,99 \
+  --out $OUT/qsteps.csv
+
+python benchmark.py \
+  --channel 561=$DATA/561 --channel 638=$DATA/638 \
+  --census $OUT/census.csv --qsteps $OUT/qsteps.csv \
+  --percentiles none 0,100 0.1,99.9 1,99 \
+  --samples-per-group 200 --num-workers 90 --outdir $OUT
+
+python plots.py \
+  --census $OUT/census.csv --results $OUT/results.csv --outdir $OUT
 ```
 
-`--crops-per-slice` defaults to 1 (the bright crop); extra crops are distinct
-random tiles, clipped to how many 128×128 tiles the slice holds.
-`--num-workers` parallelises across crops (one crop per task, so per-worker RAM
-stays small); it defaults to 1 (serial).
+## Outputs
 
-Outputs:
+A normalizatin configuration is defined by `low,high` percentiles or `none`.
+
+Bounds are global per channel (percentiles over the sampled tiles' pooled
+pixels), so the same `[lo, hi]` is applied to every tile. Clipped data is
+stretched to full uint16 before compression and mapped back before metrics,
+so all conditions compare in the original intensity domain.
 
 ```
-bench_out/results.csv
-bench_out/summary.csv
-bench_out/ratio_vs_roi_error_<channel>.png
-bench_out/ratio_vs_nrmse_<channel>.png
-bench_out/chunks/original/*.tif
-bench_out/chunks/reconstructed/*.tif
+bench_out/census.csv                       one row per tile (whole volume)
+bench_out/qsteps.csv                       per-configuration qstep grid
+bench_out/results.csv                      one row per tile x config x qstep
+bench_out/best_condition_by_ratio.csv      best config per ratio, per data group
+bench_out/characterize_<channel>.png       sample characterization
+bench_out/performance_by_group_<metric>_<ch>.png   ratio vs distortion, by data group
+bench_out/throughput_<channel>.png         read/encode/write throughput, by data group
 ```
-
-## Notes
-
-- Lossy compression uses `openjph.encode(..., irreversible=True, qstep=q)`;
-  smaller `qstep` ⇒ higher fidelity / larger files.
-- PSNR is normalised to each crop's intensity range (not a fixed uint16 peak),
-  so it is meaningful for low-valued data.
-- A clipping condition is `low,high` percentiles or `none` (identity). Bounds
-  are global per channel (percentiles over all that channel's crops), so the
-  same `[lo, hi]` is applied to every crop. `0,100` is global min-max (no
-  saturation). Clipped data is stretched to full uint16 before compression and
-  mapped back before metrics, so all conditions compare in the original domain.
-- Per-crop / per-condition failures are recorded in `results.csv`
-  (`status=failed`) and do not stop the run.
