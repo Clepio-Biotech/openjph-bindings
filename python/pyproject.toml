@@ -27,8 +27,15 @@ test = [
     "pytest>=8",
     "zarr>=3.1.3",
 ]
+
+[dependency-groups]
+# Installed by default on `uv sync`; run `pre-commit install` once to wire the hook.
 dev = [
     "pre-commit>=4.3",
+]
+benchmarking = [
+    "matplotlib>=3.8",
+    "tifffile>=2024.1",
 ]
 
 [project.entry-points."zarr.codecs"]
@@ -38,6 +45,7 @@ openjph_htj2k = "openjph.zarr:OpenJPHCodec"
 build-dir = "build/{wheel_tag}"
 minimum-version = "build-system.requires"
 wheel.packages = ["src/openjph"]
+sdist.exclude = ["benchmarking"]
 
 [tool.cibuildwheel]
 build = "cp312-* cp313-*"

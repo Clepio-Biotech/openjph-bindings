@@ -19,3 +19,6 @@ compile_commands.json
 *.pyd
 .venv/
 .DS_Store
+journal/*
+benchmarking/bin/
+benchmarking/results/
