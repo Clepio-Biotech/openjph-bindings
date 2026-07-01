@@ -24,7 +24,7 @@ jobs:
           - os: macos-15-intel
             archs: "x86_64"
             arch_label: "x86_64"
-          - os: macos-15
+          - os: macos-latest
             archs: "arm64"
             arch_label: "arm64"
           - os: windows-latest
