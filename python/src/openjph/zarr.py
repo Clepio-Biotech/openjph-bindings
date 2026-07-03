@@ -355,7 +355,18 @@ class OpenJPHCodec(ArrayBytesCodec):
             backend.decode,
             chunk_bytes.to_bytes(),
         )
-        arr = _denormalize_from_backend(np.asarray(decoded), layout)
+        arr = np.asarray(decoded)
+        # A single-component codestream is ambiguous: the SIZ marker cannot
+        # distinguish (h, w) from (1, h, w), so the backend returns 2-D and a
+        # singleton component axis requested by the chunk spec must be restored
+        # here. Only singleton axes are reconciled; any other mismatch still
+        # fails the check below.
+        expected_backend = _backend_shape(chunk_spec.shape, layout)
+        if arr.shape != expected_backend and tuple(
+            d for d in arr.shape if d != 1
+        ) == tuple(d for d in expected_backend if d != 1):
+            arr = arr.reshape(expected_backend)
+        arr = _denormalize_from_backend(arr, layout)
 
         if arr.shape != chunk_spec.shape:
             raise ValueError(
