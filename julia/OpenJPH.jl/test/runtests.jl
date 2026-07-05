@@ -93,6 +93,23 @@ using Test
         @test_throws Exception openjph_decode(bad)                  # corrupt body
     end
 
+    # OpenJPH-internal failures must surface the library's detailed diagnostic
+    # (message text, source location) in the thrown error. OpenJPH's default
+    # handler prints that detail to stderr and throws a generic "ojph error" —
+    # the wrapper installs a capturing handler instead.
+    @testset "Error messages carry OpenJPH detail" begin
+        bad = vcat(UInt8[0xff, 0x4f], zeros(UInt8, 62))   # SOC, then garbage SIZ
+        msg = try
+            openjph_decode(bad)
+            nothing
+        catch e
+            sprint(showerror, e)
+        end
+        @test msg !== nothing
+        @test occursin("SIZ", msg)
+        @test !occursin("ojph error", msg)
+    end
+
     # An untrusted codestream claiming absurd dimensions must be rejected by the
     # native size guard rather than attempting a huge allocation. Patch the SIZ
     # Xsiz/Ysiz/XTsiz/YTsiz fields to a huge value.

@@ -1,5 +1,7 @@
 #include <algorithm>
+#include <cstdarg>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -19,17 +21,42 @@
 
 namespace {
 
-/* Silence OpenJPH's default stdout/stderr logging. This must run lazily (on
-   first API call) rather than from a namespace-scope constructor: OpenJPH's
-   stream globals are themselves dynamically initialized (error_stream =
-   stderr in ojph_message.cpp), and cross-TU initialization order would let
-   that overwrite an early set_*_stream(nullptr) — observably, a load-time
-   silencer still left every decode error printing to stderr. */
-void silence_ojph_logging() {
+/* OpenJPH's default error handler prints the detailed diagnostic (message,
+   file, line) to stderr and then throws a generic
+   std::runtime_error("ojph error") — so the useful text never reached the
+   caller's err_buf. This handler formats the diagnostic into the thrown
+   exception instead: nothing prints to the console, and the catch blocks
+   below copy the real message into err_buf via e.what(). Thread-safe: the
+   message lives in the exception object, no shared buffer. */
+class CapturingError final : public ojph::message_error {
+public:
+  void operator()(int error_code, const char *file_name, int line_num,
+                  const char *fmt, ...) override {
+    char msg[512];
+    va_list args;
+    va_start(args, fmt);
+    std::vsnprintf(msg, sizeof(msg), fmt, args);
+    va_end(args);
+    char full[640];
+    std::snprintf(full, sizeof(full), "%s (%s:%d, code 0x%08X)", msg, file_name,
+                  line_num, static_cast<unsigned int>(error_code));
+    throw std::runtime_error(full);
+  }
+};
+
+/* Install the capturing error handler and silence the info/warning console
+   streams. This must run lazily (on first API call) rather than from a
+   namespace-scope constructor: OpenJPH's message globals are themselves
+   dynamically initialized (error_stream = stderr, local_error = &error in
+   ojph_message.cpp), and cross-TU initialization order would let those
+   overwrite an early setup — observably, a load-time silencer still left
+   every decode error printing to stderr. */
+void configure_ojph_messages() {
   static const bool done = [] {
     ojph::set_info_stream(nullptr);
     ojph::set_warning_stream(nullptr);
-    ojph::set_error_stream(nullptr);
+    static CapturingError handler;
+    ojph::configure_error(&handler);
     return true;
   }();
   (void)done;
@@ -203,7 +230,7 @@ int encode_impl_c(const openjph_array_t *img,
                   const openjph_encode_params_t *params, uint8_t **out,
                   size_t *out_len, char *err_buf, size_t err_buf_len) {
   try {
-    silence_ojph_logging();
+    configure_ojph_messages();
     if (img->ndim != 2 && img->ndim != 3)
       throw std::runtime_error("ndim must be 2 or 3");
     if (img->bit_depth == 0 || img->bit_depth > 32)
@@ -310,7 +337,7 @@ int decode_impl_c(const uint8_t *codestream_data, size_t codestream_len,
                   size_t out_dims[3], uint32_t *out_bit_depth,
                   int32_t *out_is_signed, char *err_buf, size_t err_buf_len) {
   try {
-    silence_ojph_logging();
+    configure_ojph_messages();
     ojph::mem_infile infile;
     infile.open(reinterpret_cast<const ojph::ui8 *>(codestream_data),
                 codestream_len);

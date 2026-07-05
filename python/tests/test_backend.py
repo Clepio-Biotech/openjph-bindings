@@ -118,6 +118,17 @@ def test_roundtrip_3d_stack_distinct_slices() -> None:
     assert len({decoded[s].tobytes() for s in range(Z)}) == Z  # slices distinct
 
 
+def test_error_message_carries_openjph_detail() -> None:
+    # OpenJPH-internal failures must surface the library's detailed diagnostic
+    # (message text, source location) in the raised exception. OpenJPH's
+    # default handler prints that detail to stderr and throws a generic
+    # "ojph error" — the wrapper installs a capturing handler instead.
+    bad = b"\xff\x4f" + b"\x00" * 62  # SOC marker followed by a garbage SIZ
+    with pytest.raises(RuntimeError, match="SIZ") as excinfo:
+        openjph_backend.decode(bad)
+    assert "ojph error" not in str(excinfo.value)
+
+
 def test_irreversible_uint16_roundtrip() -> None:
     data = _make_uint16((32, 48))
 
