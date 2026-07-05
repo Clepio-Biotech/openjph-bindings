@@ -82,6 +82,30 @@ jobs:
       - name: Cross-language Zarr interop
         run: bash tests/interop/run.sh
 
+  native-sanitizer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cmake
+        run: sudo apt-get install -y cmake
+      # Sanitizer flags go through CMAKE_<LANG>_FLAGS so the FetchContent'd
+      # OpenJPH objects embedded in libopenjph_c are instrumented too.
+      - name: Configure with AddressSanitizer
+        run: >
+          cmake -S native -B build-asan
+          -DCMAKE_BUILD_TYPE=Debug
+          -DOPENJPH_C_BUILD_TESTS=ON
+          -DCMAKE_C_FLAGS="-fsanitize=address -fno-omit-frame-pointer -g"
+          -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer -g"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address"
+          -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address"
+      - name: Build
+        run: cmake --build build-asan -j
+      - name: Run leak tests (LeakSanitizer)
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+        run: ctest --test-dir build-asan --output-on-failure
+
   version-sync:
     runs-on: ubuntu-latest
     steps:

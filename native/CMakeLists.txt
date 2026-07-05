@@ -37,3 +37,15 @@ target_link_libraries(openjph_c PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,openjph>")
 
 install(TARGETS openjph_c LIBRARY DESTINATION lib)
 install(FILES include/openjph_c.h DESTINATION include)
+
+# Test drivers are opt-in; CI builds them with -fsanitize=address passed via
+# CMAKE_<LANG>_FLAGS at configure time so the FetchContent'd OpenJPH objects
+# inside openjph_c are instrumented too (see the native-sanitizer job).
+option(OPENJPH_C_BUILD_TESTS "Build C API test drivers" OFF)
+if(OPENJPH_C_BUILD_TESTS)
+  enable_testing()
+  add_executable(leak_check tests/leak_check.c)
+  target_include_directories(leak_check PRIVATE include)
+  target_link_libraries(leak_check PRIVATE openjph_c)
+  add_test(NAME leak_check COMMAND leak_check)
+endif()

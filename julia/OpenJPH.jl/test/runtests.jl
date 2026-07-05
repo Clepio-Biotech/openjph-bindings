@@ -106,4 +106,36 @@ using Test
         @test_throws Exception openjph_decode(enc)
     end
 
+    # FFI-boundary leak regression: C-allocated buffers are copied and freed on
+    # every call, so a leak is invisible to Julia's GC and shows up only as
+    # unbounded RSS growth. Statistical complement to the deterministic
+    # LeakSanitizer driver in native/tests/leak_check.c. Linux-only (statm).
+    @testset "Memory: encode/decode RSS stable" begin
+        if !Sys.islinux()
+            @info "RSS leak check skipped (/proc/self/statm is Linux-only)"
+        else
+            page  = Int(ccall(:getpagesize, Cint, ()))
+            rss() = parse(Int, split(read("/proc/self/statm", String))[2]) * page
+            data  = rand(UInt16, 256, 256)                       # 128 KiB raw
+            bad   = vcat(UInt8[0xff, 0x4f], zeros(UInt8, 62))
+            function cycle()
+                dec = openjph_decode(openjph_encode(data))
+                @assert size(dec) == size(data)
+                try                                              # error path must
+                    openjph_decode(bad)                          # not leak either
+                catch
+                end
+            end
+            for _ in 1:200; cycle(); end                         # warmup
+            GC.gc(true); GC.gc(true)
+            baseline = rss()
+            for _ in 1:2000; cycle(); end
+            GC.gc(true); GC.gc(true)
+            grown = rss() - baseline
+            # A leaked 128 KiB buffer per cycle would grow RSS by >= 250 MiB;
+            # 64 MiB tolerates GC-pool/allocator noise with ~4x margin.
+            @test grown < 64 * 1024 * 1024
+        end
+    end
+
 end

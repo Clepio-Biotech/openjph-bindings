@@ -17,16 +17,23 @@
 
 #include "openjph_c.h"
 
-/* Silence OpenJPH's default stderr logging once at load time. */
-static struct LogSilencer {
-  LogSilencer() {
+namespace {
+
+/* Silence OpenJPH's default stdout/stderr logging. This must run lazily (on
+   first API call) rather than from a namespace-scope constructor: OpenJPH's
+   stream globals are themselves dynamically initialized (error_stream =
+   stderr in ojph_message.cpp), and cross-TU initialization order would let
+   that overwrite an early set_*_stream(nullptr) — observably, a load-time
+   silencer still left every decode error printing to stderr. */
+void silence_ojph_logging() {
+  static const bool done = [] {
     ojph::set_info_stream(nullptr);
     ojph::set_warning_stream(nullptr);
     ojph::set_error_stream(nullptr);
-  }
-} _log_silencer;
-
-namespace {
+    return true;
+  }();
+  (void)done;
+}
 
 struct ArrayInfo {
   uint32_t bit_depth;
@@ -196,6 +203,7 @@ int encode_impl_c(const openjph_array_t *img,
                   const openjph_encode_params_t *params, uint8_t **out,
                   size_t *out_len, char *err_buf, size_t err_buf_len) {
   try {
+    silence_ojph_logging();
     if (img->ndim != 2 && img->ndim != 3)
       throw std::runtime_error("ndim must be 2 or 3");
     if (img->bit_depth == 0 || img->bit_depth > 32)
@@ -302,6 +310,7 @@ int decode_impl_c(const uint8_t *codestream_data, size_t codestream_len,
                   size_t out_dims[3], uint32_t *out_bit_depth,
                   int32_t *out_is_signed, char *err_buf, size_t err_buf_len) {
   try {
+    silence_ojph_logging();
     ojph::mem_infile infile;
     infile.open(reinterpret_cast<const ojph::ui8 *>(codestream_data),
                 codestream_len);
