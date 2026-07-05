@@ -107,9 +107,9 @@ static void roundtrip(const openjph_array_t *img) {
 static void happy_paths(void) {
   static const size_t shapes[][4] = {
       /* ndim, d0, d1, d2 */
-      {2, 64, 96, 0},  /* 2-D */
-      {3, 3, 32, 48},  /* 3-D multi-component */
-      {3, 1, 32, 48},  /* 3-D singleton component */
+      {2, 64, 96, 0}, /* 2-D */
+      {3, 3, 32, 48}, /* 3-D multi-component */
+      {3, 1, 32, 48}, /* 3-D singleton component */
   };
   for (size_t s = 0; s < sizeof(shapes) / sizeof(shapes[0]); ++s) {
     size_t ndim = shapes[s][0];
@@ -203,8 +203,8 @@ static void decode_error_paths(void) {
     CHECK(out == NULL);
   }
   { /* truncated header: first 10 bytes of a valid stream */
-    CHECK(openjph_decode(cs, 10, &out, &out_len, &out_ndim, out_dims, &bd,
-                         &sgn, err, sizeof(err)) == -1);
+    CHECK(openjph_decode(cs, 10, &out, &out_len, &out_ndim, out_dims, &bd, &sgn,
+                         err, sizeof(err)) == -1);
     CHECK(out == NULL);
   }
   { /* truncated body: headers parse, decode starves mid-stream. HTJ2K
