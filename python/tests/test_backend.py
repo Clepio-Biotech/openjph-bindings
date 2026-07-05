@@ -87,6 +87,17 @@ def test_roundtrip_3d() -> None:
     np.testing.assert_array_equal(decoded, data)
 
 
+def test_singleton_component_decodes_as_2d() -> None:
+    # A (1, h, w) array encodes to a 1-component codestream whose SIZ marker is
+    # indistinguishable from (h, w), so the low-level decode returns 2-D. This
+    # ambiguity is inherent to the codestream; callers with a target shape
+    # (e.g. the Zarr codecs) are responsible for restoring the singleton axis.
+    data = _make_uint16((1, 24, 32))
+    decoded = openjph_backend.decode(openjph_backend.encode(data))
+    assert decoded.shape == (24, 32)
+    np.testing.assert_array_equal(decoded, data[0])
+
+
 def test_roundtrip_3d_stack_distinct_slices() -> None:
     # A 3-D array whose leading dimension is a stack of *independent* slices
     # (a volumetric stack, NOT a color transform) must round-trip each slice

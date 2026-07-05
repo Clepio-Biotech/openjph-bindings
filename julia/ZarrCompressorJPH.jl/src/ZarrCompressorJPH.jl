@@ -59,6 +59,8 @@ function V3Codecs.codec_encode(c::HTJ2KCodec, data::AbstractArray)
         planar             = c.planar)
 end
 
+_nonsingleton(t) = Tuple(d for d in t if d != 1)
+
 function V3Codecs.codec_decode(c::HTJ2KCodec, encoded::Vector{UInt8},
         ::Type{T}, dims::NTuple{N, Int64};
         fill_value = nothing) where {T, N}
@@ -69,9 +71,14 @@ function V3Codecs.codec_decode(c::HTJ2KCodec, encoded::Vector{UInt8},
     # otherwise be silently linear-copied or converted by Zarr's copyto!.
     eltype(raw) === T || error(
         "HTJ2KCodec decode: element type mismatch — codestream has $(eltype(raw)), expected $T")
-    size(raw) == dims || error(
-        "HTJ2KCodec decode: shape mismatch — codestream has $(size(raw)), expected $dims")
-    raw
+    size(raw) == dims && return raw
+    # A single-component codestream is ambiguous: the SIZ marker cannot
+    # distinguish (w, h) from (w, h, 1) (in Julia's column-major convention the
+    # singleton component axis is trailing), so openjph_decode returns 2-D and
+    # the singleton axis requested by Zarr's chunk dims must be restored here.
+    # Only singleton axes are reconciled; any other mismatch is still an error.
+    _nonsingleton(size(raw)) == _nonsingleton(dims) && return reshape(raw, dims)
+    error("HTJ2KCodec decode: shape mismatch — codestream has $(size(raw)), expected $dims")
 end
 
 function JSON.lower(c::HTJ2KCodec)

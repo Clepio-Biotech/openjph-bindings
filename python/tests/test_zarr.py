@@ -154,6 +154,11 @@ def test_rejects_bad_progression_order() -> None:
         ("zyx", (4, 32, 48)),
         ("cyx", (3, 32, 48)),
         ("yxc", (32, 48, 3)),
+        # Singleton component axes: 1-component codestreams whose SIZ marker is
+        # indistinguishable from 2-D — the codec must restore the singleton axis.
+        ("zyx", (1, 32, 48)),
+        ("cyx", (1, 32, 48)),
+        ("yxc", (32, 48, 1)),
     ],
 )
 def test_real_backend_roundtrip(tmp_path, layout, shape) -> None:
@@ -172,6 +177,28 @@ def test_real_backend_roundtrip(tmp_path, layout, shape) -> None:
     result = arr[:]
     assert result.shape == shape
     assert result.dtype == np.uint16
+    np.testing.assert_array_equal(result, data)
+
+
+def test_real_backend_singleton_chunks(tmp_path) -> None:
+    # The PR #3 bug shape: a non-singleton array stored with chunks whose
+    # component axis is 1, so every chunk encodes to a 1-component codestream
+    # that decodes 2-D and previously failed the codec shape check at read time.
+    pytest.importorskip("openjph._backend")
+    import zarr
+
+    shape = (4, 64, 96)
+    data = _make_uint16(shape)
+    arr = zarr.create(
+        store=str(tmp_path / "real_singleton_chunks.zarr"),
+        shape=shape,
+        chunks=(1, 64, 96),
+        dtype="uint16",
+        codecs=[OpenJPHCodec(layout="zyx")],
+    )
+    arr[:] = data
+    result = arr[:]
+    assert result.shape == shape
     np.testing.assert_array_equal(result, data)
 
 

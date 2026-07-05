@@ -33,7 +33,26 @@ def main(outdir: str) -> None:
         arr = zarr.create(**kw)
         arr[:] = data
         assert np.array_equal(arr[:], data), f"{name}: python round-trip not exact"
-    print("python wrote py_plain.zarr and py_htj2k.zarr")
+
+    # 3-D stores with singleton-component chunks: each (1, H, W) chunk encodes
+    # to a 1-component codestream whose SIZ marker cannot express the leading
+    # singleton axis — the reader must restore it (PR #3 regression).
+    Z = 4
+    data3d = (np.arange(Z * H * W, dtype=np.uint16).reshape(Z, H, W)) % 60000
+    for name, codecs in (
+        ("plain3d", None),
+        ("htj2k3d", [OpenJPHCodec(layout="zyx")]),
+    ):
+        store = f"{outdir}/py_{name}.zarr"
+        shutil.rmtree(store, ignore_errors=True)
+        kw = dict(store=store, shape=(Z, H, W), chunks=(1, H, W), dtype="uint16")
+        if codecs is not None:
+            kw["codecs"] = codecs
+        arr = zarr.create(**kw)
+        arr[:] = data3d
+        assert np.array_equal(arr[:], data3d), f"{name}: python round-trip not exact"
+
+    print("python wrote py_plain.zarr, py_htj2k.zarr, py_plain3d.zarr, py_htj2k3d.zarr")
 
 
 if __name__ == "__main__":

@@ -88,6 +88,20 @@ import JSON
         @test dec == data
     end
 
+    @testset "codec_decode — trailing-singleton component chunk" begin
+        # (w, h, 1) encodes to a 1-component codestream whose SIZ marker is
+        # indistinguishable from (w, h); decode must restore the singleton
+        # axis Zarr asked for instead of erroring at read time.
+        c    = HTJ2KCodec()
+        data = rand(UInt16, 32, 64, 1)
+        enc  = V3Codecs.codec_encode(c, data)
+        dec  = V3Codecs.codec_decode(c, enc, UInt16, (32, 64, 1))
+        @test size(dec) == (32, 64, 1)
+        @test dec == data
+        # non-singleton mismatches must still error
+        @test_throws Exception V3Codecs.codec_decode(c, enc, UInt16, (64, 32, 1))
+    end
+
     @testset "codec_encode / codec_decode — irreversible (lossy)" begin
         c    = HTJ2KCodec(irreversible=true)
         data = rand(UInt16, 32, 64)
@@ -109,6 +123,16 @@ import JSON
         c        = HTJ2KCodec()
         z        = zcreate_htj2k(UInt16, 3, 64, 128; codec=c, chunks=(3, 64, 64))
         original = rand(UInt16, 3, 64, 128)
+        z[:, :, :] = original
+        @test z[:, :, :] == original
+    end
+
+    @testset "zcreate_htj2k — singleton-component chunks" begin
+        # The PR #3 bug shape: a non-singleton array stored with chunks whose
+        # component axis is 1, so every chunk is a 1-component codestream.
+        c        = HTJ2KCodec()
+        z        = zcreate_htj2k(UInt16, 64, 128, 4; codec=c, chunks=(64, 128, 1))
+        original = rand(UInt16, 64, 128, 4)
         z[:, :, :] = original
         @test z[:, :, :] == original
     end
