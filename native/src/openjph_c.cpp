@@ -203,15 +203,13 @@ void copy_linebuf_to_array(const ojph::line_buf *line, Dst *data,
   copy_from_linebuf_impl(line, dst, info.width);
 }
 
-/* Decode all lines of the codestream into the caller-provided buffer. The
-   buffer is zero-filled first so its contents are deterministic even if a
-   short/corrupt stream makes pull() return null mid-loop (the caller must
-   still discard the buffer on error). */
+/* Decode all lines of the codestream into the caller-provided buffer. On
+   success every byte is written exactly once by the pull loop, so no
+   pre-fill is needed; on a mid-loop throw the buffer contents are
+   unspecified, which is the documented contract. */
 template <typename T>
 void decode_into(ojph::codestream &codestream, const ArrayInfo &info, T *out) {
-  const size_t total = info.components * info.height * info.width;
   const size_t total_lines = info.components * info.height;
-  std::fill(out, out + total, T{});
 
   std::vector<size_t> rows(info.components, 0);
   for (size_t line_index = 0; line_index < total_lines; ++line_index) {
@@ -257,6 +255,63 @@ void copy_row_to_linebuf_c(const void *data, const ArrayInfo &info,
                          line);
 }
 
+/* An outfile_base writing directly into a caller-provided fixed buffer — the
+   second approach recommended in OpenJPH issue #164 (cf. openjphjs'
+   EncodedBuffer.hpp), replacing mem_outfile + copy-out: no internal
+   allocation, no growth reallocs, no final memcpy. Writes that run past
+   capacity stop storing but keep advancing the position, so used_size() is
+   the exact codestream length even when the buffer was too small — which is
+   what the OPENJPH_ERR_BUFFER_TOO_SMALL contract reports (the stored prefix
+   is discarded by the caller in that case). Seeks only occur for TLM
+   back-patching, which this wrapper never enables, but are supported for
+   completeness. */
+class fixed_outfile final : public ojph::outfile_base {
+public:
+  void open(uint8_t *buf, size_t capacity) {
+    buf_ = buf;
+    capacity_ = capacity;
+    pos_ = 0;
+    used_ = 0;
+  }
+  size_t write(const void *ptr, size_t size) override {
+    if (pos_ < capacity_) {
+      const size_t fits = std::min(size, capacity_ - pos_);
+      std::memcpy(buf_ + pos_, ptr, fits);
+    }
+    pos_ += size;
+    used_ = std::max(used_, pos_);
+    return size;
+  }
+  ojph::si64 tell() override { return static_cast<ojph::si64>(pos_); }
+  int seek(ojph::si64 offset, enum outfile_base::seek origin) override {
+    ojph::si64 target;
+    switch (origin) {
+    case OJPH_SEEK_SET:
+      target = offset;
+      break;
+    case OJPH_SEEK_CUR:
+      target = static_cast<ojph::si64>(pos_) + offset;
+      break;
+    case OJPH_SEEK_END:
+      target = static_cast<ojph::si64>(used_) + offset;
+      break;
+    default:
+      return -1;
+    }
+    if (target < 0)
+      return -1;
+    pos_ = static_cast<size_t>(target);
+    return 0;
+  }
+  size_t used_size() const { return used_; }
+
+private:
+  uint8_t *buf_ = nullptr;
+  size_t capacity_ = 0;
+  size_t pos_ = 0;
+  size_t used_ = 0;
+};
+
 size_t encode_bound_impl(const openjph_array_t *img) {
   try {
     const ArrayInfo info = array_info_from(img);
@@ -292,8 +347,8 @@ int encode_impl_c(const openjph_array_t *img,
     if (params->color_transform && info.components != 3)
       throw std::runtime_error("color_transform requires exactly 3 components");
 
-    ojph::mem_outfile outfile;
-    outfile.open();
+    fixed_outfile outfile;
+    outfile.open(out_buf, out_buf_len);
 
     {
       ojph::codestream codestream;
@@ -349,7 +404,7 @@ int encode_impl_c(const openjph_array_t *img,
       codestream.close();
     }
 
-    const size_t n = outfile.get_used_size();
+    const size_t n = outfile.used_size();
     *used_bytes = n;
     if (n > out_buf_len) {
       std::snprintf(err_buf, err_buf_len,
@@ -357,7 +412,6 @@ int encode_impl_c(const openjph_array_t *img,
                     out_buf_len);
       return OPENJPH_ERR_BUFFER_TOO_SMALL;
     }
-    std::memcpy(out_buf, outfile.get_data(), n);
     return OPENJPH_OK;
 
   } catch (const std::exception &e) {
