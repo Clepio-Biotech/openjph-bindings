@@ -137,6 +137,26 @@ import JSON
         @test z[:, :, :] == original
     end
 
+    @testset "zcreate_htj2k — edge chunks (non-dividing shape)" begin
+        # Zarr pads edge chunks to full chunk shape before the codec sees
+        # them and slices the valid region after decode; chunks here cover as
+        # little as 6x64, 64x36, and 6x36 of real data.
+        c        = HTJ2KCodec()
+        z        = zcreate_htj2k(UInt16, 70, 100; codec=c, chunks=(64, 64))
+        original = rand(UInt16, 70, 100)
+        z[:, :]  = original
+        @test z[:, :] == original
+        # partial write through the read-modify-write path
+        z[66:70, 91:100] .= UInt16(7)
+        @test all(z[66:70, 91:100] .== 7)
+
+        # 3-D: edge chunks combined with a trailing singleton component axis
+        z3        = zcreate_htj2k(UInt16, 70, 100, 5; codec=c, chunks=(64, 64, 1))
+        original3 = rand(UInt16, 70, 100, 5)
+        z3[:, :, :] = original3
+        @test z3[:, :, :] == original3
+    end
+
     @testset "zcreate_htj2k — persistent store round-trip" begin
         c    = HTJ2KCodec()
         path = tempname()

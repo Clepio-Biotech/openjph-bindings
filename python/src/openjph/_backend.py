@@ -74,24 +74,33 @@ _BD_SIGNED_TO_DTYPE: dict[tuple[int, int], np.dtype] = {
     v: k for k, v in _DTYPE_TO_BD_SIGNED.items()
 }
 
+# ---- C return codes (openjph_c.h) ----
+
+_OPENJPH_OK = 0
+_OPENJPH_ERR_BUFFER_TOO_SMALL = -2
+
 # ---- configure function signatures ----
+# All buffers cross the FFI in one direction: Python allocates, C fills.
+# Nothing C-allocated reaches Python, so there is no openjph_free.
+
+_lib.openjph_encode_bound.restype = ctypes.c_size_t
+_lib.openjph_encode_bound.argtypes = [ctypes.POINTER(_Array)]
 
 _lib.openjph_encode.restype = ctypes.c_int
 _lib.openjph_encode.argtypes = [
     ctypes.POINTER(_Array),
     ctypes.POINTER(_EncodeParams),
-    ctypes.POINTER(ctypes.c_void_p),
-    ctypes.POINTER(ctypes.c_size_t),
+    ctypes.POINTER(ctypes.c_uint8),  # out_buf (caller-allocated)
+    ctypes.c_size_t,  # out_buf_len
+    ctypes.POINTER(ctypes.c_size_t),  # used_bytes
     ctypes.c_char_p,
     ctypes.c_size_t,
 ]
 
-_lib.openjph_decode.restype = ctypes.c_int
-_lib.openjph_decode.argtypes = [
+_lib.openjph_get_info.restype = ctypes.c_int
+_lib.openjph_get_info.argtypes = [
     ctypes.c_char_p,
     ctypes.c_size_t,
-    ctypes.POINTER(ctypes.c_void_p),
-    ctypes.POINTER(ctypes.c_size_t),
     ctypes.POINTER(ctypes.c_size_t),
     ctypes.POINTER(ctypes.c_size_t),  # out_dims[3] decays to size_t*
     ctypes.POINTER(ctypes.c_uint32),
@@ -100,8 +109,15 @@ _lib.openjph_decode.argtypes = [
     ctypes.c_size_t,
 ]
 
-_lib.openjph_free.restype = None
-_lib.openjph_free.argtypes = [ctypes.c_void_p]
+_lib.openjph_decode.restype = ctypes.c_int
+_lib.openjph_decode.argtypes = [
+    ctypes.c_char_p,
+    ctypes.c_size_t,
+    ctypes.c_void_p,  # out_buf (caller-allocated)
+    ctypes.c_size_t,  # out_buf_len
+    ctypes.c_char_p,
+    ctypes.c_size_t,
+]
 
 
 # ---- public API ----
@@ -165,42 +181,57 @@ def encode(
         planar=int(planar),
     )
 
-    out_ptr = ctypes.c_void_p(0)
-    out_len = ctypes.c_size_t(0)
-    err_buf = ctypes.create_string_buffer(1024)
+    bound = int(_lib.openjph_encode_bound(ctypes.byref(img)))
+    if bound == 0:
+        raise ValueError("openjph_encode_bound: invalid array descriptor")
 
-    ret = _lib.openjph_encode(
-        ctypes.byref(img),
-        ctypes.byref(params),
-        ctypes.byref(out_ptr),
-        ctypes.byref(out_len),
-        err_buf,
-        ctypes.c_size_t(1024),
-    )
-    if ret != 0:
+    err_buf = ctypes.create_string_buffer(1024)
+    used = ctypes.c_size_t(0)
+
+    def _call(buf: bytearray) -> int:
+        c_buf = (ctypes.c_uint8 * len(buf)).from_buffer(buf)
+        return _lib.openjph_encode(
+            ctypes.byref(img),
+            ctypes.byref(params),
+            c_buf,
+            ctypes.c_size_t(len(buf)),
+            ctypes.byref(used),
+            err_buf,
+            ctypes.c_size_t(1024),
+        )
+
+    out = bytearray(bound)
+    ret = _call(out)
+    if ret == _OPENJPH_ERR_BUFFER_TOO_SMALL:
+        # The bound is a generous estimate, not a guarantee; C reported the
+        # exact required size, so a single retry always suffices.
+        out = bytearray(int(used.value))
+        ret = _call(out)
+    if ret != _OPENJPH_OK:
         raise RuntimeError(f"openjph_encode: {err_buf.value.decode(errors='replace')}")
 
-    result = bytes(ctypes.string_at(out_ptr.value, int(out_len.value)))
-    _lib.openjph_free(out_ptr)
-    return result
+    del out[used.value :]
+    return bytes(out)
 
 
-def decode(data: bytes | np.ndarray) -> np.ndarray:
+def get_info(data: bytes | np.ndarray) -> tuple[tuple[int, ...], np.dtype]:
+    """Read (shape, dtype) from a codestream's SIZ marker without decoding.
+
+    A 1-component codestream reports a 2-D shape: the SIZ marker cannot
+    express a leading singleton axis, so (1, h, w) and (h, w) encode
+    identically. Callers that know the intended shape are the source of truth.
+    """
     cs = bytes(data) if not isinstance(data, bytes) else data
 
-    out_ptr = ctypes.c_void_p(0)
-    out_len = ctypes.c_size_t(0)
     out_ndim = ctypes.c_size_t(0)
     out_dims = (ctypes.c_size_t * 3)(0, 0, 0)
     out_bit_depth = ctypes.c_uint32(0)
     out_is_signed = ctypes.c_int32(0)
     err_buf = ctypes.create_string_buffer(1024)
 
-    ret = _lib.openjph_decode(
+    ret = _lib.openjph_get_info(
         cs,
         ctypes.c_size_t(len(cs)),
-        ctypes.byref(out_ptr),
-        ctypes.byref(out_len),
         ctypes.byref(out_ndim),
         out_dims,
         ctypes.byref(out_bit_depth),
@@ -208,19 +239,63 @@ def decode(data: bytes | np.ndarray) -> np.ndarray:
         err_buf,
         ctypes.c_size_t(1024),
     )
-    if ret != 0:
-        raise RuntimeError(f"openjph_decode: {err_buf.value.decode(errors='replace')}")
+    if ret != _OPENJPH_OK:
+        raise RuntimeError(
+            f"openjph_get_info: {err_buf.value.decode(errors='replace')}"
+        )
 
     key = (int(out_bit_depth.value), int(out_is_signed.value))
     dtype = _BD_SIGNED_TO_DTYPE.get(key)
     if dtype is None:
         raise RuntimeError(
-            f"openjph_decode: unknown output type bit_depth={key[0]}, is_signed={key[1]}"
+            f"openjph_get_info: unknown output type bit_depth={key[0]}, "
+            f"is_signed={key[1]}"
         )
 
-    ndim = int(out_ndim.value)
-    shape = tuple(int(out_dims[i]) for i in range(ndim))
+    shape = tuple(int(out_dims[i]) for i in range(int(out_ndim.value)))
+    return shape, dtype
 
-    raw = bytes(ctypes.string_at(out_ptr.value, int(out_len.value)))
-    _lib.openjph_free(out_ptr)
-    return np.frombuffer(raw, dtype=dtype).reshape(shape)
+
+def decode(data: bytes | np.ndarray, *, out: np.ndarray | None = None) -> np.ndarray:
+    """Decode a codestream, writing pixels directly into a caller-owned array.
+
+    With ``out=None`` an array is allocated at the SIZ-derived (shape, dtype)
+    from :func:`get_info` (so a 1-component codestream decodes 2-D). Passing
+    ``out`` decodes zero-copy into it; its dtype must match the codestream and
+    its total byte size must equal the decoded size exactly, but its shape is
+    free — e.g. ``(1, h, w)`` for a codestream whose SIZ says ``(h, w)``.
+    On error the contents of ``out`` are unspecified.
+    """
+    cs = bytes(data) if not isinstance(data, bytes) else data
+
+    shape, dtype = get_info(cs)
+    expected_nbytes = int(np.prod(shape)) * dtype.itemsize
+
+    if out is None:
+        out = np.empty(shape, dtype=dtype)
+    else:
+        if out.dtype != dtype:
+            raise ValueError(
+                f"out has dtype {out.dtype}, codestream decodes to {dtype}"
+            )
+        if not out.flags["C_CONTIGUOUS"] or not out.flags["WRITEABLE"]:
+            raise ValueError("out must be C-contiguous and writeable")
+        if out.nbytes != expected_nbytes:
+            raise ValueError(
+                f"out has {out.nbytes} bytes, codestream decodes to "
+                f"{expected_nbytes} bytes (shape {shape})"
+            )
+
+    err_buf = ctypes.create_string_buffer(1024)
+    ret = _lib.openjph_decode(
+        cs,
+        ctypes.c_size_t(len(cs)),
+        out.ctypes.data_as(ctypes.c_void_p),
+        ctypes.c_size_t(out.nbytes),
+        err_buf,
+        ctypes.c_size_t(1024),
+    )
+    if ret != _OPENJPH_OK:
+        raise RuntimeError(f"openjph_decode: {err_buf.value.decode(errors='replace')}")
+
+    return out

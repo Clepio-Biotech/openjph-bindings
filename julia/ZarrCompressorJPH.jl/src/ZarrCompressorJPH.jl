@@ -65,20 +65,27 @@ function V3Codecs.codec_decode(c::HTJ2KCodec, encoded::Vector{UInt8},
         ::Type{T}, dims::NTuple{N, Int64};
         fill_value = nothing) where {T, N}
     _ = fill_value
-    raw = openjph_decode(encoded; color_transform = c.color_transform)
-    # The element type and shape come from the codestream's SIZ marker. Validate
-    # them against what Zarr expects: a mismatch (corruption / writer bug) would
-    # otherwise be silently linear-copied or converted by Zarr's copyto!.
-    eltype(raw) === T || error(
-        "HTJ2KCodec decode: element type mismatch — codestream has $(eltype(raw)), expected $T")
-    size(raw) == dims && return raw
-    # A single-component codestream is ambiguous: the SIZ marker cannot
-    # distinguish (w, h) from (w, h, 1) (in Julia's column-major convention the
-    # singleton component axis is trailing), so openjph_decode returns 2-D and
-    # the singleton axis requested by Zarr's chunk dims must be restored here.
-    # Only singleton axes are reconciled; any other mismatch is still an error.
-    _nonsingleton(size(raw)) == _nonsingleton(dims) && return reshape(raw, dims)
-    error("HTJ2KCodec decode: shape mismatch — codestream has $(size(raw)), expected $dims")
+    # color_transform layouts keep the standalone decode path (component-first
+    # axis reordering) with the strict shape check, preserving prior behavior.
+    if c.color_transform
+        raw = openjph_decode(encoded; color_transform = true)
+        eltype(raw) === T || error(
+            "HTJ2KCodec decode: element type mismatch — codestream has $(eltype(raw)), expected $T")
+        size(raw) == dims || error(
+            "HTJ2KCodec decode: shape mismatch — codestream has $(size(raw)), expected $dims")
+        return raw
+    end
+    # Zarr's dims are the source of truth: validate the codestream's SIZ header
+    # against them, then decode straight into the target array (zero-copy). A
+    # trailing singleton axis the SIZ marker cannot express is restored
+    # implicitly since the byte counts match; any real mismatch — element type,
+    # or shape beyond singleton axes (corruption / writer bug) — still errors.
+    T_cs, shape_cs = openjph_get_info(encoded)
+    T_cs === T || error(
+        "HTJ2KCodec decode: element type mismatch — codestream has $T_cs, expected $T")
+    _nonsingleton(shape_cs) == _nonsingleton(dims) || error(
+        "HTJ2KCodec decode: shape mismatch — codestream has $shape_cs, expected $dims")
+    openjph_decode!(Array{T}(undef, dims), encoded)
 end
 
 function JSON.lower(c::HTJ2KCodec)

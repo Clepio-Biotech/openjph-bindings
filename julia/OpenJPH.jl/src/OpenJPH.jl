@@ -45,6 +45,11 @@ struct OJPHEncodeParams
     planar             :: Cint
 end
 
+# ---- C return codes (openjph_c.h) ----
+
+const _OPENJPH_OK = Cint(0)
+const _OPENJPH_ERR_BUFFER_TOO_SMALL = Cint(-2)
+
 # ---- type <-> (bit_depth, is_signed) mapping ----
 
 function _bit_depth_signed(::Type{T}) where T
@@ -98,10 +103,10 @@ Dimension indices are reversed when reporting the shape to C (Julia is column-ma
 C is row-major), so a Julia `(H, W)` array produces the same codestream as a
 Python/NumPy `(W, H)` C-order array with the same pixels.
 
-The output buffer is C-allocated and freed via `openjph_free` after being copied into
-a Julia-managed `Vector{UInt8}`. Using `unsafe_wrap(...; own=true)` instead would
-attach Julia's `free` as the finalizer, which is undefined behaviour whenever Julia
-and the shared library use different C runtimes (e.g. on Windows).
+The output buffer is Julia-allocated (sized by `openjph_encode_bound`) and filled
+by C — no wrapper-allocated memory crosses the FFI, so there is nothing to free
+on the C side. If the bound is ever insufficient, C reports the exact required
+size and the call retries once before `resize!`-ing to the used byte count.
 
 # Keyword arguments
 - `irreversible::Bool = false` — use lossy 9/7 wavelet transform
@@ -181,32 +186,127 @@ function openjph_encode(arr::AbstractArray{T,N};
         Cint(effective_planar)
     )
 
-    out_ptr = Ref{Ptr{UInt8}}(C_NULL)
-    out_len = Ref{Csize_t}(0)
+    bound = ccall((:openjph_encode_bound, libopenjph_c), Csize_t,
+                  (Ref{OJPHArray},), Ref(img))
+    bound == 0 && throw(ArgumentError("openjph_encode: invalid array descriptor"))
+
+    out     = Vector{UInt8}(undef, Int(bound))
+    used    = Ref{Csize_t}(0)
     err_buf = zeros(UInt8, 1024)
 
-    ret = GC.@preserve arr err_buf ccall(
+    encode_ccall(buf) = GC.@preserve arr buf err_buf ccall(
         (:openjph_encode, libopenjph_c), Cint,
         (Ref{OJPHArray}, Ref{OJPHEncodeParams},
-         Ref{Ptr{UInt8}}, Ref{Csize_t}, Ptr{UInt8}, Csize_t),
-        Ref(img), Ref(params), out_ptr, out_len, pointer(err_buf), Csize_t(1024)
+         Ptr{UInt8}, Csize_t, Ref{Csize_t}, Ptr{UInt8}, Csize_t),
+        Ref(img), Ref(params),
+        pointer(buf), Csize_t(length(buf)), used, pointer(err_buf), Csize_t(1024)
     )
 
-    if ret != 0
-        error("openjph_encode: $(unsafe_string(pointer(err_buf)))")
+    ret = encode_ccall(out)
+    if ret == _OPENJPH_ERR_BUFFER_TOO_SMALL
+        # The bound is a generous estimate, not a guarantee; C reported the
+        # exact required size, so a single retry always suffices.
+        resize!(out, Int(used[]))
+        ret = encode_ccall(out)
     end
+    ret == _OPENJPH_OK || error("openjph_encode: $(unsafe_string(pointer(err_buf)))")
 
-    # try/finally so the C-allocated buffer is always freed, even if the Julia
-    # copy throws (e.g. OOM) after the ccall succeeded.
-    result = try
-        copy(unsafe_wrap(Array, out_ptr[], Int(out_len[]); own=false))
-    finally
-        ccall((:openjph_free, libopenjph_c), Cvoid, (Ptr{Cvoid},), out_ptr[])
-    end
-    result
+    resize!(out, Int(used[]))
+    out
 end
 
 # ---- decode ----
+
+function _get_info_raw(cs::Vector{UInt8})
+    out_ndim      = Ref{Csize_t}(0)
+    out_dims      = Ref{NTuple{3, Csize_t}}((0, 0, 0))
+    out_bit_depth = Ref{Cuint}(0)
+    out_is_signed = Ref{Cint}(0)
+    err_buf       = zeros(UInt8, 1024)
+
+    ret = GC.@preserve cs err_buf ccall(
+        (:openjph_get_info, libopenjph_c), Cint,
+        (Ptr{UInt8}, Csize_t,
+         Ref{Csize_t}, Ref{NTuple{3, Csize_t}},
+         Ref{Cuint}, Ref{Cint},
+         Ptr{UInt8}, Csize_t),
+        pointer(cs), Csize_t(length(cs)),
+        out_ndim, out_dims,
+        out_bit_depth, out_is_signed,
+        pointer(err_buf), Csize_t(1024)
+    )
+    ret == _OPENJPH_OK || error("openjph_get_info: $(unsafe_string(pointer(err_buf)))")
+
+    T = _type_from_bd_signed(out_bit_depth[], out_is_signed[])
+    (T, Int(out_ndim[]), out_dims[])
+end
+
+# Reconstruct the Julia shape from the SIZ dimensions stored in the codestream.
+# For 2-D and standard 3-D: all dims are reversed (column-major ↔ row-major swap).
+# For 3-D with color_transform: component dim (dims[1]) stays first; only the
+# two spatial dims are reversed, mirroring the encode-side convention.
+function _shape_from_dims(ndim::Int, dims::NTuple{3, Csize_t},
+                          color_transform::Bool)
+    if ndim == 2
+        (Int(dims[2]), Int(dims[1]))
+    elseif color_transform
+        (Int(dims[1]), Int(dims[3]), Int(dims[2]))   # (C, H, W)
+    else
+        (Int(dims[3]), Int(dims[2]), Int(dims[1]))
+    end
+end
+
+"""
+    openjph_get_info(codestream::AbstractVector{UInt8}; color_transform=false)
+        -> (T, shape)
+
+Read the element type and Julia-convention shape from the codestream SIZ marker
+without decoding. `color_transform` selects the same shape reconstruction as
+`openjph_decode`.
+
+A 1-component codestream reports a 2-D shape: the SIZ marker cannot express a
+trailing singleton axis (in Julia's column-major convention), so `(w, h, 1)`
+and `(w, h)` encode identically. Callers that know the intended shape are the
+source of truth — allocate at that shape and use `openjph_decode!`.
+"""
+function openjph_get_info(codestream::AbstractVector{UInt8};
+                          color_transform::Bool = false)
+    cs = codestream isa Vector{UInt8} ? codestream : collect(UInt8, codestream)
+    T, ndim, dims = _get_info_raw(cs)
+    (T, _shape_from_dims(ndim, dims, color_transform))
+end
+
+"""
+    openjph_decode!(out::Array{T}, codestream::AbstractVector{UInt8}) -> out
+
+Decompress an HTJ2K codestream into the caller-allocated `out`, zero-copy. `T`
+must match the codestream's element type and `sizeof(out)` must exactly equal
+the decoded byte count, but the shape of `out` is free — e.g. `(w, h, 1)` for
+a codestream whose SIZ marker says `(w, h)`. On error the contents of `out`
+are unspecified.
+"""
+function openjph_decode!(out::Array{T}, codestream::AbstractVector{UInt8}) where
+        {T <: Union{UInt8, Int8, UInt16, Int16, UInt32, Int32}}
+    cs = codestream isa Vector{UInt8} ? codestream : collect(UInt8, codestream)
+
+    # The byte length is validated by C against the SIZ marker; the element
+    # type must be validated here, since a type mismatch with equal byte size
+    # (e.g. Int16 vs UInt16) would otherwise be silently misinterpreted.
+    T_cs, _, _ = _get_info_raw(cs)
+    T_cs === T || error(
+        "openjph_decode!: element type mismatch — codestream has $T_cs, output array has $T")
+
+    err_buf = zeros(UInt8, 1024)
+    ret = GC.@preserve out cs err_buf ccall(
+        (:openjph_decode, libopenjph_c), Cint,
+        (Ptr{UInt8}, Csize_t, Ptr{Cvoid}, Csize_t, Ptr{UInt8}, Csize_t),
+        pointer(cs), Csize_t(length(cs)),
+        Ptr{Cvoid}(pointer(out)), Csize_t(sizeof(out)),
+        pointer(err_buf), Csize_t(1024)
+    )
+    ret == _OPENJPH_OK || error("openjph_decode: $(unsafe_string(pointer(err_buf)))")
+    out
+end
 
 """
     openjph_decode(codestream::AbstractVector{UInt8}; color_transform=false) -> Array
@@ -218,69 +318,18 @@ codestream SIZ marker — the caller does not need to supply them.
 3-D output is reconstructed as `(C, H, W)` (component first); when `false` (default),
 all dimensions are reversed from the SIZ marker as in the standard 2-D path.
 
-The C library writes decoded pixels into a C-allocated row-major buffer. The SIZ
-dimensions are reversed to match Julia's column-major convention, the buffer is
-copied into Julia-managed memory, and then freed via `openjph_free`. Using
-`unsafe_wrap(...; own=true)` instead would attach Julia's `free` as the finalizer,
-which is undefined behaviour whenever Julia and the shared library use different C
-runtimes (e.g. on Windows).
+The output array is Julia-allocated at the SIZ-derived shape and C writes decoded
+pixels directly into it — no wrapper-allocated memory crosses the FFI and no copy
+is made. To reuse an existing buffer (or to impose a shape the SIZ marker cannot
+express, such as a trailing singleton axis), use `openjph_decode!`.
 """
 function openjph_decode(codestream::AbstractVector{UInt8};
                         color_transform::Bool = false)
     cs = codestream isa Vector{UInt8} ? codestream : collect(UInt8, codestream)
-
-    out_ptr       = Ref{Ptr{UInt8}}(C_NULL)
-    out_len       = Ref{Csize_t}(0)
-    out_ndim      = Ref{Csize_t}(0)
-    out_dims      = Ref{NTuple{3, Csize_t}}((0, 0, 0))
-    out_bit_depth = Ref{Cuint}(0)
-    out_is_signed = Ref{Cint}(0)
-    err_buf       = zeros(UInt8, 1024)
-
-    ret = GC.@preserve cs err_buf ccall(
-        (:openjph_decode, libopenjph_c), Cint,
-        (Ptr{UInt8}, Csize_t,
-         Ref{Ptr{UInt8}}, Ref{Csize_t},
-         Ref{Csize_t}, Ref{NTuple{3, Csize_t}},
-         Ref{Cuint}, Ref{Cint},
-         Ptr{UInt8}, Csize_t),
-        pointer(cs), Csize_t(length(cs)),
-        out_ptr, out_len,
-        out_ndim, out_dims,
-        out_bit_depth, out_is_signed,
-        pointer(err_buf), Csize_t(1024)
-    )
-
-    if ret != 0
-        error("openjph_decode: $(unsafe_string(pointer(err_buf)))")
-    end
-
-    T    = _type_from_bd_signed(out_bit_depth[], out_is_signed[])
-    ndim = Int(out_ndim[])
-    dims = out_dims[]
-
-    # Reconstruct the Julia shape from the SIZ dimensions stored in the codestream.
-    # For 2-D and standard 3-D: all dims are reversed (column-major ↔ row-major swap).
-    # For 3-D with color_transform: component dim (dims[1]) stays first; only the
-    # two spatial dims are reversed, mirroring the encode-side convention.
-    shape_c = if ndim == 2
-        (Int(dims[2]), Int(dims[1]))
-    elseif color_transform
-        (Int(dims[1]), Int(dims[3]), Int(dims[2]))   # (C, H, W)
-    else
-        (Int(dims[3]), Int(dims[2]), Int(dims[1]))
-    end
-
-    # try/finally so the C-allocated buffer is always freed, even if the Julia
-    # copy throws after the ccall succeeded.
-    raw = try
-        copy(unsafe_wrap(Array, reinterpret(Ptr{T}, out_ptr[]), shape_c; own=false))
-    finally
-        ccall((:openjph_free, libopenjph_c), Cvoid, (Ptr{Cvoid},), out_ptr[])
-    end
-    raw
+    T, shape = openjph_get_info(cs; color_transform)
+    openjph_decode!(Array{T}(undef, shape), cs)
 end
 
-export openjph_encode, openjph_decode
+export openjph_encode, openjph_decode, openjph_decode!, openjph_get_info
 
 end # module

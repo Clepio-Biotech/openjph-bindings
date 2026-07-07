@@ -45,7 +45,9 @@ class _OpenJPHBackend(Protocol):
         planar: bool,
     ) -> bytes: ...
 
-    def decode(self, data: bytes) -> np.ndarray: ...
+    def get_info(self, data: bytes) -> tuple[tuple[int, ...], np.dtype]: ...
+
+    def decode(self, data: bytes, *, out: np.ndarray | None = None) -> np.ndarray: ...
 
 
 _backend_cache: _OpenJPHBackend | None = None
@@ -351,34 +353,32 @@ class OpenJPHCodec(ArrayBytesCodec):
         backend = _get_backend()
 
         native_dtype = chunk_spec.dtype.to_native_dtype()
-        decoded = await asyncio.to_thread(
-            backend.decode,
-            chunk_bytes.to_bytes(),
-        )
-        arr = np.asarray(decoded)
-        # A single-component codestream is ambiguous: the SIZ marker cannot
-        # distinguish (h, w) from (1, h, w), so the backend returns 2-D and a
-        # singleton component axis requested by the chunk spec must be restored
-        # here. Only singleton axes are reconciled; any other mismatch still
-        # fails the check below.
         expected_backend = _backend_shape(chunk_spec.shape, layout)
-        if arr.shape != expected_backend and tuple(
-            d for d in arr.shape if d != 1
-        ) == tuple(d for d in expected_backend if d != 1):
-            arr = arr.reshape(expected_backend)
-        arr = _denormalize_from_backend(arr, layout)
+        data = chunk_bytes.to_bytes()
 
-        if arr.shape != chunk_spec.shape:
+        # The chunk spec is the source of truth for shape: validate the
+        # codestream's SIZ header against it, allocate at the expected backend
+        # shape, and let C decode straight into it. A singleton component axis
+        # the SIZ marker cannot express is restored implicitly (the byte
+        # counts match); any real mismatch — dtype, or shape beyond singleton
+        # axes (corruption / writer bug) — still errors.
+        info_shape, info_dtype = backend.get_info(data)
+        if info_dtype != native_dtype:
             raise ValueError(
-                "OpenJPH backend returned an unexpected shape: "
-                f"expected {chunk_spec.shape}, got {arr.shape}"
+                f"OpenJPH codestream has dtype {info_dtype}, "
+                f"array expects {native_dtype}"
             )
-        # The backend infers dtype from the codestream's SIZ marker, so for a
-        # validated array this astype is a no-op; it only guards against a
-        # backend/metadata disagreement (and never silently widens, since the
-        # codestream stores the exact bit-depth/signedness it was written with).
-        if arr.dtype != native_dtype:
-            arr = arr.astype(native_dtype, copy=False)
+        if tuple(d for d in info_shape if d != 1) != tuple(
+            d for d in expected_backend if d != 1
+        ):
+            raise ValueError(
+                "OpenJPH codestream decodes to shape "
+                f"{info_shape}, expected {expected_backend}"
+            )
+
+        arr = np.empty(expected_backend, dtype=native_dtype)
+        await asyncio.to_thread(backend.decode, data, out=arr)
+        arr = _denormalize_from_backend(arr, layout)
 
         return chunk_spec.prototype.nd_buffer.from_ndarray_like(arr)
 

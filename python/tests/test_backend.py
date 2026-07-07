@@ -18,6 +18,7 @@ def test_backend_module_importable() -> None:
     mod = importlib.import_module("openjph._backend")
     assert hasattr(mod, "encode")
     assert hasattr(mod, "decode")
+    assert hasattr(mod, "get_info")
 
 
 def test_public_api_importable() -> None:
@@ -27,6 +28,23 @@ def test_public_api_importable() -> None:
 
     assert openjph.encode is _backend.encode
     assert openjph.decode is _backend.decode
+    assert openjph.get_info is _backend.get_info
+
+
+def test_exported_symbols_match_caller_allocated_abi() -> None:
+    # The library must export exactly the caller-allocated API; openjph_free
+    # is gone from the ABI (no wrapper-allocated memory crosses the FFI).
+    from openjph import _backend
+
+    for name in (
+        "openjph_encode_bound",
+        "openjph_encode",
+        "openjph_get_info",
+        "openjph_decode",
+    ):
+        assert getattr(_backend._lib, name) is not None
+    with pytest.raises(AttributeError):
+        _backend._lib.openjph_free
 
 
 def test_ctypes_struct_layout_matches_c_abi() -> None:
@@ -116,6 +134,45 @@ def test_roundtrip_3d_stack_distinct_slices() -> None:
     for s in range(Z):
         np.testing.assert_array_equal(decoded[s], data[s])
     assert len({decoded[s].tobytes() for s in range(Z)}) == Z  # slices distinct
+
+
+def test_get_info_matches_decode() -> None:
+    data = _make_uint16((3, 24, 32))
+    encoded = openjph_backend.encode(data)
+    shape, dtype = openjph_backend.get_info(encoded)
+    assert shape == (3, 24, 32)
+    assert dtype == np.uint16
+    # 1-component streams report 2-D (SIZ cannot express the singleton axis)
+    shape1, _ = openjph_backend.get_info(openjph_backend.encode(data[:1]))
+    assert shape1 == (24, 32)
+
+
+def test_decode_into_caller_array() -> None:
+    data = _make_uint16((1, 24, 32))
+    encoded = openjph_backend.encode(data)
+
+    # The caller's shape is authoritative as long as dtype and byte size
+    # match — here (1, 24, 32) for a codestream whose SIZ says (24, 32).
+    out = np.empty((1, 24, 32), dtype=np.uint16)
+    result = openjph_backend.decode(encoded, out=out)
+    assert result is out
+    np.testing.assert_array_equal(out, data)
+
+    with pytest.raises(ValueError, match="dtype"):
+        openjph_backend.decode(encoded, out=np.empty((24, 32), np.int16))
+    with pytest.raises(ValueError, match="bytes"):
+        openjph_backend.decode(encoded, out=np.empty((24, 33), np.uint16))
+    with pytest.raises(ValueError, match="contiguous"):
+        openjph_backend.decode(encoded, out=np.empty((32, 24), np.uint16).transpose())
+
+
+def test_encode_retries_when_bound_is_too_small(monkeypatch) -> None:
+    # Force the -2 path: with a deliberately tiny bound, encode must retry
+    # once at the exact size C reports and still round-trip.
+    data = _make_uint16((32, 48))
+    monkeypatch.setattr(openjph_backend._lib, "openjph_encode_bound", lambda img: 16)
+    encoded = openjph_backend.encode(data)
+    np.testing.assert_array_equal(openjph_backend.decode(encoded), data)
 
 
 def test_error_message_carries_openjph_detail() -> None:

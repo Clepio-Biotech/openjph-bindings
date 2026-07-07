@@ -17,8 +17,16 @@ class _FakeOpenJPHBackend:
         np.save(buf, np.asarray(array), allow_pickle=False)
         return buf.getvalue()
 
-    def decode(self, data: bytes) -> np.ndarray:
-        return np.load(io.BytesIO(data), allow_pickle=False)
+    def get_info(self, data: bytes) -> tuple[tuple[int, ...], np.dtype]:
+        arr = np.load(io.BytesIO(data), allow_pickle=False)
+        return arr.shape, arr.dtype
+
+    def decode(self, data: bytes, *, out: np.ndarray | None = None) -> np.ndarray:
+        arr = np.load(io.BytesIO(data), allow_pickle=False)
+        if out is None:
+            return arr
+        out[...] = arr.reshape(out.shape)
+        return out
 
 
 def _make_uint16(shape: tuple[int, ...]) -> np.ndarray:
@@ -200,6 +208,75 @@ def test_real_backend_singleton_chunks(tmp_path) -> None:
     result = arr[:]
     assert result.shape == shape
     np.testing.assert_array_equal(result, data)
+
+
+def test_real_backend_edge_chunks(tmp_path) -> None:
+    # Non-dividing shapes: Zarr pads edge chunks to full chunk shape with the
+    # fill value before the codec sees them, and slices the valid region after
+    # decode — the codec must round-trip them like any other chunk. Chunks
+    # here cover as little as 6x64, 64x36, and 6x36 of real data, and the 3-D
+    # store combines edge chunks with a singleton component axis.
+    pytest.importorskip("openjph._backend")
+    import zarr
+
+    shape2d = (70, 100)
+    data2d = _make_uint16(shape2d)
+    arr2d = zarr.create(
+        store=str(tmp_path / "edge2d.zarr"),
+        shape=shape2d,
+        chunks=(64, 64),
+        dtype="uint16",
+        codecs=[OpenJPHCodec(layout="yx")],
+    )
+    arr2d[:] = data2d
+    np.testing.assert_array_equal(arr2d[:], data2d)
+
+    # partial write through the read-modify-write path
+    arr2d[65:70, 90:100] = 7
+    assert (arr2d[65:70, 90:100] == 7).all()
+
+    shape3d = (5, 70, 100)
+    data3d = _make_uint16(shape3d)
+    arr3d = zarr.create(
+        store=str(tmp_path / "edge3d.zarr"),
+        shape=shape3d,
+        chunks=(1, 64, 64),
+        dtype="uint16",
+        codecs=[OpenJPHCodec(layout="zyx")],
+    )
+    arr3d[:] = data3d
+    np.testing.assert_array_equal(arr3d[:], data3d)
+
+
+def test_all_fill_value_chunks_never_reach_codec(tmp_path) -> None:
+    # Chunks equal to the fill value are skipped by Zarr on write and
+    # materialized from the fill value on read — the codec is never invoked
+    # for them, so only the one non-empty chunk may exist on disk.
+    pytest.importorskip("openjph._backend")
+    import pathlib
+
+    import zarr
+
+    store = str(tmp_path / "zeros.zarr")
+    arr = zarr.create(
+        store=store,
+        shape=(128, 128),
+        chunks=(64, 64),
+        dtype="uint16",
+        fill_value=0,
+        codecs=[OpenJPHCodec(layout="yx")],
+    )
+    data = np.zeros((128, 128), np.uint16)
+    data[0:64, 0:64] = 5
+    arr[:] = data
+
+    chunk_files = [
+        p
+        for p in pathlib.Path(store).rglob("*")
+        if p.is_file() and not p.name.endswith(".json")
+    ]
+    assert len(chunk_files) == 1
+    np.testing.assert_array_equal(arr[:], data)
 
 
 def test_real_backend_lossy(tmp_path) -> None:

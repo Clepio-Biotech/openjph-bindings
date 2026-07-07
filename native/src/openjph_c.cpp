@@ -2,12 +2,9 @@
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <limits>
-#include <memory>
 #include <stdexcept>
-#include <string>
 #include <vector>
 
 #include "ojph_base.h"
@@ -87,12 +84,50 @@ uint32_t max_decompositions(size_t width, size_t height) {
   return levels;
 }
 
-/* Portable overflow-checked multiply (no compiler builtins, so MSVC is fine).
-   Throws if a*b would wrap size_t. */
+/* Portable overflow-checked arithmetic (no compiler builtins, so MSVC is
+   fine). Throws if the result would wrap size_t. */
 size_t checked_mul(size_t a, size_t b) {
   if (a != 0 && b > std::numeric_limits<size_t>::max() / a)
-    throw std::runtime_error("Decoded image dimensions overflow");
+    throw std::runtime_error("Image size computation overflows");
   return a * b;
+}
+
+size_t checked_add(size_t a, size_t b) {
+  if (b > std::numeric_limits<size_t>::max() - a)
+    throw std::runtime_error("Image size computation overflows");
+  return a + b;
+}
+
+size_t bytes_per_sample_for(uint32_t bit_depth) {
+  return (bit_depth <= 8) ? 1u : (bit_depth <= 16) ? 2u : 4u;
+}
+
+/* Validate an input array descriptor and normalize it to ArrayInfo.
+   Shared by openjph_encode_bound and openjph_encode so both agree on what
+   "invalid" means. */
+ArrayInfo array_info_from(const openjph_array_t *img) {
+  if (img->ndim != 2 && img->ndim != 3)
+    throw std::runtime_error("ndim must be 2 or 3");
+  if (img->bit_depth == 0 || img->bit_depth > 32)
+    throw std::runtime_error("bit_depth must be in [1, 32]");
+
+  ArrayInfo info;
+  info.bit_depth = img->bit_depth;
+  info.is_signed = (img->is_signed != 0);
+  info.ndim = img->ndim;
+  if (img->ndim == 2) {
+    info.components = 1;
+    info.height = img->dims[0];
+    info.width = img->dims[1];
+  } else {
+    info.components = img->dims[0];
+    info.height = img->dims[1];
+    info.width = img->dims[2];
+  }
+
+  if (info.components == 0 || info.height == 0 || info.width == 0)
+    throw std::runtime_error("image dimensions must be non-zero");
+  return info;
 }
 
 /* Copy a row from a typed source pointer into an OpenJPH line buffer.
@@ -168,18 +203,13 @@ void copy_linebuf_to_array(const ojph::line_buf *line, Dst *data,
   copy_from_linebuf_impl(line, dst, info.width);
 }
 
+/* Decode all lines of the codestream into the caller-provided buffer. On
+   success every byte is written exactly once by the pull loop, so no
+   pre-fill is needed; on a mid-loop throw the buffer contents are
+   unspecified, which is the documented contract. */
 template <typename T>
-T *decode_to_buffer(ojph::codestream &codestream, const ArrayInfo &info) {
-  const size_t total = info.components * info.height * info.width;
+void decode_into(ojph::codestream &codestream, const ArrayInfo &info, T *out) {
   const size_t total_lines = info.components * info.height;
-  // RAII: the buffer is freed on any throw below (e.g. a short/corrupt stream
-  // where pull() returns null mid-loop), and only released to the caller on
-  // success. Caller frees it via openjph_free (== std::free).
-  std::unique_ptr<T, decltype(&std::free)> data(
-      static_cast<T *>(std::malloc(total * sizeof(T))), &std::free);
-  if (!data)
-    throw std::runtime_error("Failed to allocate decode buffer");
-  std::fill(data.get(), data.get() + total, T{});
 
   std::vector<size_t> rows(info.components, 0);
   for (size_t line_index = 0; line_index < total_lines; ++line_index) {
@@ -189,9 +219,8 @@ T *decode_to_buffer(ojph::codestream &codestream, const ArrayInfo &info) {
       throw std::runtime_error(
           "OpenJPH decode ended before the requested array was filled");
     const size_t row = rows[component]++;
-    copy_linebuf_to_array(line, data.get(), info, component, row);
+    copy_linebuf_to_array(line, out, info, component, row);
   }
-  return data.release();
 }
 
 /* Copy one row of the input C buffer into an ojph::line_buf.
@@ -226,42 +255,100 @@ void copy_row_to_linebuf_c(const void *data, const ArrayInfo &info,
                          line);
 }
 
+/* An outfile_base writing directly into a caller-provided fixed buffer — the
+   second approach recommended in OpenJPH issue #164 (cf. openjphjs'
+   EncodedBuffer.hpp), replacing mem_outfile + copy-out: no internal
+   allocation, no growth reallocs, no final memcpy. Writes that run past
+   capacity stop storing but keep advancing the position, so used_size() is
+   the exact codestream length even when the buffer was too small — which is
+   what the OPENJPH_ERR_BUFFER_TOO_SMALL contract reports (the stored prefix
+   is discarded by the caller in that case). Seeks only occur for TLM
+   back-patching, which this wrapper never enables, but are supported for
+   completeness. */
+class fixed_outfile final : public ojph::outfile_base {
+public:
+  void open(uint8_t *buf, size_t capacity) {
+    buf_ = buf;
+    capacity_ = capacity;
+    pos_ = 0;
+    used_ = 0;
+  }
+  size_t write(const void *ptr, size_t size) override {
+    if (pos_ < capacity_) {
+      const size_t fits = std::min(size, capacity_ - pos_);
+      std::memcpy(buf_ + pos_, ptr, fits);
+    }
+    pos_ += size;
+    used_ = std::max(used_, pos_);
+    return size;
+  }
+  ojph::si64 tell() override { return static_cast<ojph::si64>(pos_); }
+  int seek(ojph::si64 offset, enum outfile_base::seek origin) override {
+    ojph::si64 target;
+    switch (origin) {
+    case OJPH_SEEK_SET:
+      target = offset;
+      break;
+    case OJPH_SEEK_CUR:
+      target = static_cast<ojph::si64>(pos_) + offset;
+      break;
+    case OJPH_SEEK_END:
+      target = static_cast<ojph::si64>(used_) + offset;
+      break;
+    default:
+      return -1;
+    }
+    if (target < 0)
+      return -1;
+    pos_ = static_cast<size_t>(target);
+    return 0;
+  }
+  size_t used_size() const { return used_; }
+
+private:
+  uint8_t *buf_ = nullptr;
+  size_t capacity_ = 0;
+  size_t pos_ = 0;
+  size_t used_ = 0;
+};
+
+size_t encode_bound_impl(const openjph_array_t *img) {
+  try {
+    const ArrayInfo info = array_info_from(img);
+    const size_t raw = checked_mul(
+        checked_mul(checked_mul(info.components, info.height), info.width),
+        bytes_per_sample_for(info.bit_depth));
+    /* raw + raw/2 headroom + fixed header slack + per-component marker
+       slack. OpenJPH provides no exact bound; this is generous but not
+       load-bearing — openjph_encode reports the required size if it is ever
+       exceeded, and the caller retries. */
+    size_t bound = checked_add(raw, raw / 2);
+    bound = checked_add(bound, 4096);
+    bound = checked_add(bound, checked_mul(info.components, 1024));
+    return bound;
+  } catch (...) {
+    return 0;
+  }
+}
+
 int encode_impl_c(const openjph_array_t *img,
-                  const openjph_encode_params_t *params, uint8_t **out,
-                  size_t *out_len, char *err_buf, size_t err_buf_len) {
+                  const openjph_encode_params_t *params, uint8_t *out_buf,
+                  size_t out_buf_len, size_t *used_bytes, char *err_buf,
+                  size_t err_buf_len) {
   try {
     configure_ojph_messages();
-    if (img->ndim != 2 && img->ndim != 3)
-      throw std::runtime_error("ndim must be 2 or 3");
-    if (img->bit_depth == 0 || img->bit_depth > 32)
-      throw std::runtime_error("bit_depth must be in [1, 32]");
+    *used_bytes = 0;
+
+    const ArrayInfo info = array_info_from(img);
     if (params->block_width <= 0 || params->block_height <= 0)
       throw std::runtime_error("block dimensions must be positive");
     if (!params->irreversible && params->use_qstep)
       throw std::runtime_error("qstep is only valid when irreversible=1");
-
-    ArrayInfo info;
-    info.bit_depth = img->bit_depth;
-    info.is_signed = (img->is_signed != 0);
-    info.ndim = img->ndim;
-    if (img->ndim == 2) {
-      info.components = 1;
-      info.height = img->dims[0];
-      info.width = img->dims[1];
-    } else {
-      info.components = img->dims[0];
-      info.height = img->dims[1];
-      info.width = img->dims[2];
-    }
-
-    if (info.components == 0 || info.height == 0 || info.width == 0)
-      throw std::runtime_error("image dimensions must be non-zero");
-
     if (params->color_transform && info.components != 3)
       throw std::runtime_error("color_transform requires exactly 3 components");
 
-    ojph::mem_outfile outfile;
-    outfile.open();
+    fixed_outfile outfile;
+    outfile.open(out_buf, out_buf_len);
 
     {
       ojph::codestream codestream;
@@ -317,117 +404,149 @@ int encode_impl_c(const openjph_array_t *img,
       codestream.close();
     }
 
-    const size_t n = outfile.get_used_size();
-    uint8_t *buf = static_cast<uint8_t *>(std::malloc(n));
-    if (!buf)
-      throw std::runtime_error("Failed to allocate encode output buffer");
-    std::memcpy(buf, outfile.get_data(), n);
-    *out = buf;
-    *out_len = n;
-    return 0;
+    const size_t n = outfile.used_size();
+    *used_bytes = n;
+    if (n > out_buf_len) {
+      std::snprintf(err_buf, err_buf_len,
+                    "output buffer too small: need %zu bytes, have %zu", n,
+                    out_buf_len);
+      return OPENJPH_ERR_BUFFER_TOO_SMALL;
+    }
+    return OPENJPH_OK;
 
   } catch (const std::exception &e) {
     std::snprintf(err_buf, err_buf_len, "%s", e.what());
-    return -1;
+    return OPENJPH_ERR;
+  }
+}
+
+/* SIZ-derived facts shared by openjph_get_info and openjph_decode. */
+struct SizInfo {
+  ArrayInfo array;
+  size_t bytes_per_sample;
+  size_t total_bytes;
+};
+
+/* Open the codestream and read shape and element type from its SIZ marker.
+   The (components x height x width x bytes) product below is computed by
+   this wrapper to size/validate caller buffers, so an unchecked overflow
+   would mis-size them. OpenJPH validates individual SIZ fields but does not
+   bound total image area, so reject zero/overflowing/absurd dimensions from
+   untrusted input. */
+SizInfo read_siz_info(ojph::codestream &codestream, ojph::mem_infile &infile,
+                      const uint8_t *codestream_data, size_t codestream_len) {
+  infile.open(reinterpret_cast<const ojph::ui8 *>(codestream_data),
+              codestream_len);
+  // Decode planarity is dictated by the codestream's color-transform flag and
+  // is set inside read_headers(); an explicit set_planar() here is
+  // overwritten.
+  codestream.read_headers(&infile);
+
+  auto siz = codestream.access_siz();
+  const uint32_t comp = siz.get_num_components();
+  const uint32_t w = siz.get_image_extent().x;
+  const uint32_t h = siz.get_image_extent().y;
+  const uint32_t bd = siz.get_bit_depth(0);
+  const bool sgn = siz.is_signed(0);
+
+  if (comp == 0 || w == 0 || h == 0)
+    throw std::runtime_error("Decoded image has a zero dimension");
+
+  SizInfo si;
+  si.array.bit_depth = bd;
+  si.array.is_signed = sgn;
+  si.array.ndim = (comp == 1) ? 2 : 3;
+  si.array.components = comp;
+  si.array.height = h;
+  si.array.width = w;
+  si.bytes_per_sample = bytes_per_sample_for(bd);
+  si.total_bytes =
+      checked_mul(checked_mul(checked_mul(comp, h), w), si.bytes_per_sample);
+
+  constexpr size_t kMaxDecodeBytes = size_t(1) << 33; // 8 GiB sanity cap
+  if (si.total_bytes > kMaxDecodeBytes)
+    throw std::runtime_error("Decoded image exceeds the size limit");
+  return si;
+}
+
+void fill_info_outputs(const SizInfo &si, size_t *out_ndim, size_t out_dims[3],
+                       uint32_t *out_bit_depth, int32_t *out_is_signed) {
+  *out_bit_depth = si.array.bit_depth;
+  *out_is_signed = si.array.is_signed ? 1 : 0;
+  *out_ndim = si.array.ndim;
+  if (si.array.ndim == 2) {
+    out_dims[0] = si.array.height;
+    out_dims[1] = si.array.width;
+    out_dims[2] = 0;
+  } else {
+    out_dims[0] = si.array.components;
+    out_dims[1] = si.array.height;
+    out_dims[2] = si.array.width;
+  }
+}
+
+int get_info_impl_c(const uint8_t *codestream_data, size_t codestream_len,
+                    size_t *out_ndim, size_t out_dims[3],
+                    uint32_t *out_bit_depth, int32_t *out_is_signed,
+                    char *err_buf, size_t err_buf_len) {
+  try {
+    configure_ojph_messages();
+    ojph::mem_infile infile;
+    ojph::codestream codestream;
+    /* Header-only probe: no create(), so no decoding machinery is set up.
+       The codestream destructor releases what read_headers allocated. */
+    const SizInfo si =
+        read_siz_info(codestream, infile, codestream_data, codestream_len);
+    fill_info_outputs(si, out_ndim, out_dims, out_bit_depth, out_is_signed);
+    return OPENJPH_OK;
+
+  } catch (const std::exception &e) {
+    std::snprintf(err_buf, err_buf_len, "%s", e.what());
+    return OPENJPH_ERR;
   }
 }
 
 int decode_impl_c(const uint8_t *codestream_data, size_t codestream_len,
-                  uint8_t **out, size_t *out_len, size_t *out_ndim,
-                  size_t out_dims[3], uint32_t *out_bit_depth,
-                  int32_t *out_is_signed, char *err_buf, size_t err_buf_len) {
+                  void *out_buf, size_t out_buf_len, char *err_buf,
+                  size_t err_buf_len) {
   try {
     configure_ojph_messages();
     ojph::mem_infile infile;
-    infile.open(reinterpret_cast<const ojph::ui8 *>(codestream_data),
-                codestream_len);
-
     ojph::codestream codestream;
-    // Decode planarity is dictated by the codestream's color-transform flag and
-    // is set inside read_headers(); an explicit set_planar() here is
-    // overwritten.
-    codestream.read_headers(&infile);
+    const SizInfo si =
+        read_siz_info(codestream, infile, codestream_data, codestream_len);
 
-    /* Read shape and element type from the codestream SIZ marker. */
-    auto siz = codestream.access_siz();
-    const uint32_t comp = siz.get_num_components();
-    const uint32_t w = siz.get_image_extent().x;
-    const uint32_t h = siz.get_image_extent().y;
-    const uint32_t bd = siz.get_bit_depth(0);
-    const bool sgn = siz.is_signed(0);
-
-    /* The (components x height x width x bytes) product below is computed and
-       malloc'd by this wrapper, so an unchecked overflow would under-allocate.
-       OpenJPH validates individual SIZ fields but does not bound total image
-       area, so reject zero/overflowing/absurd dimensions from untrusted input.
-     */
-    if (comp == 0 || w == 0 || h == 0)
-      throw std::runtime_error("Decoded image has a zero dimension");
-    const size_t bytes_per_sample = (bd <= 8) ? 1u : (bd <= 16) ? 2u : 4u;
-    const size_t total_bytes =
-        checked_mul(checked_mul(checked_mul(comp, h), w), bytes_per_sample);
-    constexpr size_t kMaxDecodeBytes = size_t(1) << 33; // 8 GiB sanity cap
-    if (total_bytes > kMaxDecodeBytes)
-      throw std::runtime_error("Decoded image exceeds the size limit");
-
-    *out_bit_depth = bd;
-    *out_is_signed = sgn ? 1 : 0;
-
-    ArrayInfo info;
-    info.bit_depth = bd;
-    info.is_signed = sgn;
-    info.ndim = (comp == 1) ? 2 : 3;
-    info.components = comp;
-    info.height = h;
-    info.width = w;
+    if (out_buf_len != si.total_bytes) {
+      char msg[128];
+      std::snprintf(msg, sizeof(msg),
+                    "output buffer size mismatch: expected %zu bytes, got %zu",
+                    si.total_bytes, out_buf_len);
+      throw std::runtime_error(msg);
+    }
 
     codestream.create();
 
-    void *decoded = nullptr;
+    const uint32_t bd = si.array.bit_depth;
+    const bool sgn = si.array.is_signed;
     if (bd <= 8 && !sgn)
-      decoded = decode_to_buffer<uint8_t>(codestream, info);
+      decode_into(codestream, si.array, static_cast<uint8_t *>(out_buf));
     else if (bd <= 8)
-      decoded = decode_to_buffer<int8_t>(codestream, info);
+      decode_into(codestream, si.array, static_cast<int8_t *>(out_buf));
     else if (bd <= 16 && !sgn)
-      decoded = decode_to_buffer<uint16_t>(codestream, info);
+      decode_into(codestream, si.array, static_cast<uint16_t *>(out_buf));
     else if (bd <= 16)
-      decoded = decode_to_buffer<int16_t>(codestream, info);
+      decode_into(codestream, si.array, static_cast<int16_t *>(out_buf));
     else if (!sgn)
-      decoded = decode_to_buffer<uint32_t>(codestream, info);
+      decode_into(codestream, si.array, static_cast<uint32_t *>(out_buf));
     else
-      decoded = decode_to_buffer<int32_t>(codestream, info);
-
-    // Guard the C-allocated buffer across codestream.close(): if close()
-    // throws, the buffer is freed; on success ownership is released to the
-    // caller (who frees it via openjph_free).
-    std::unique_ptr<void, decltype(&std::free)> decoded_guard(decoded,
-                                                              &std::free);
+      decode_into(codestream, si.array, static_cast<int32_t *>(out_buf));
 
     codestream.close();
-
-    // bytes_per_sample and the element total were validated against overflow
-    // above.
-    const size_t total = info.components * info.height * info.width;
-
-    *out = static_cast<uint8_t *>(decoded_guard.release());
-    *out_len = total * bytes_per_sample;
-
-    *out_ndim = info.ndim;
-    if (info.ndim == 2) {
-      out_dims[0] = info.height;
-      out_dims[1] = info.width;
-      out_dims[2] = 0;
-    } else {
-      out_dims[0] = info.components;
-      out_dims[1] = info.height;
-      out_dims[2] = info.width;
-    }
-
-    return 0;
+    return OPENJPH_OK;
 
   } catch (const std::exception &e) {
     std::snprintf(err_buf, err_buf_len, "%s", e.what());
-    return -1;
+    return OPENJPH_ERR;
   }
 }
 
@@ -437,21 +556,31 @@ int decode_impl_c(const uint8_t *codestream_data, size_t codestream_len,
 
 extern "C" {
 
-int openjph_encode(const openjph_array_t *img,
-                   const openjph_encode_params_t *params, uint8_t **out,
-                   size_t *out_len, char *err_buf, size_t err_buf_len) {
-  return encode_impl_c(img, params, out, out_len, err_buf, err_buf_len);
+size_t openjph_encode_bound(const openjph_array_t *img) {
+  return encode_bound_impl(img);
 }
 
-int openjph_decode(const uint8_t *codestream, size_t codestream_len,
-                   uint8_t **out, size_t *out_len, size_t *out_ndim,
-                   size_t out_dims[3], uint32_t *out_bit_depth,
-                   int32_t *out_is_signed, char *err_buf, size_t err_buf_len) {
-  return decode_impl_c(codestream, codestream_len, out, out_len, out_ndim,
-                       out_dims, out_bit_depth, out_is_signed, err_buf,
+int openjph_encode(const openjph_array_t *img,
+                   const openjph_encode_params_t *params, uint8_t *out_buf,
+                   size_t out_buf_len, size_t *used_bytes, char *err_buf,
+                   size_t err_buf_len) {
+  return encode_impl_c(img, params, out_buf, out_buf_len, used_bytes, err_buf,
                        err_buf_len);
 }
 
-void openjph_free(void *ptr) { std::free(ptr); }
+int openjph_get_info(const uint8_t *codestream, size_t codestream_len,
+                     size_t *out_ndim, size_t out_dims[3],
+                     uint32_t *out_bit_depth, int32_t *out_is_signed,
+                     char *err_buf, size_t err_buf_len) {
+  return get_info_impl_c(codestream, codestream_len, out_ndim, out_dims,
+                         out_bit_depth, out_is_signed, err_buf, err_buf_len);
+}
+
+int openjph_decode(const uint8_t *codestream, size_t codestream_len,
+                   void *out_buf, size_t out_buf_len, char *err_buf,
+                   size_t err_buf_len) {
+  return decode_impl_c(codestream, codestream_len, out_buf, out_buf_len,
+                       err_buf, err_buf_len);
+}
 
 } // extern "C"
