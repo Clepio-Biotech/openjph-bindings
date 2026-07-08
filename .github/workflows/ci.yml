@@ -15,16 +15,67 @@ on:
 
 jobs:
 
-  # ------------------------------ META ------------------------------
+# ------------------------------ GENERIC ------------------------------
 
-lint:
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v7
-    - uses: actions/setup-python@v6
-      with:
-        python-version: "3.12"
-    - run: pipx run pre-commit run --all-files
+  # ------------------------------
+  generic-lint:
+    name: 'Generic lint of the repo'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pipx run pre-commit run --all-files
+
+  # ------------------------------
+  generic-version-check:
+    name: 'Generic version check'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Extract version
+        # Exact same line is used in publish to check the tag
+        run: echo "CPP_VERSION=v$(sed -n 's/.*version\[\] = "\(.*\)".*/\1/p' xx.cpp)" >> "$GITHUB_ENV"
+      - name: Versions agree across the monorepo
+        run: |
+          echo "current env.CPP_VERSION: ${{ env.CPP_VERSION }}"
+          bash tests/check_versions.sh
+
+  # ------------------------------
+  generic-roundtrip:
+    name: 'Generic roundtrip'
+    needs: [native-done, python-done, julia-done]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+      - name: Install cmake
+        run: sudo apt-get install -y cmake
+      - name: Install pyopenjph
+        env:
+          NATIVE_PATH: ${{ github.workspace }}/native
+        # Non-editable install so the built libopenjph_c.so is copied next to
+        # _backend.py (a scikit-build-core editable install leaves it in a build
+        # dir where the loader can't find it).
+        run: python -m pip install "./python[zarr]"
+      - name: Build Julia packages
+        run: julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.build("OpenJPH")'
+      - name: Cross-language Zarr interop
+        run: bash tests/interop/run.sh
+
+  # ------------------------------
+  generic-done:
+    needs: [generic-lint, generic-version-check, generic-roundtrip]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Generic part is done"
+
 
   # ------------------------------ NATIVE ------------------------------
 
@@ -197,6 +248,7 @@ lint:
     steps:
       - run: echo "Python part is done"
 
+
   # ------------------------------ JULIA ------------------------------
 
   # ------------------------------
@@ -225,55 +277,8 @@ lint:
     steps:
       - run: echo "Julia part is done"
 
-  # ------------------------------ INTEROP ------------------------------
 
-  # ------------------------------
-  interop-version-check:
-    name: 'Interop version check'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Extract version
-        # Exact same line is used in publish to check the tag
-        run: echo "CPP_VERSION=v$(sed -n 's/.*version\[\] = "\(.*\)".*/\1/p' xx.cpp)" >> "$GITHUB_ENV"
-      - name: Versions agree across the monorepo
-        run: |
-          echo "current env.CPP_VERSION: ${{ env.CPP_VERSION }}"
-          bash tests/check_versions.sh
 
-  # ------------------------------
-  interop-roundtrip:
-    name: 'Interop roundtrip'
-    needs: [native-done, python-done, julia-done]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-      - uses: julia-actions/setup-julia@v2
-        with:
-          version: '1'
-      - name: Install cmake
-        run: sudo apt-get install -y cmake
-      - name: Install pyopenjph
-        env:
-          NATIVE_PATH: ${{ github.workspace }}/native
-        # Non-editable install so the built libopenjph_c.so is copied next to
-        # _backend.py (a scikit-build-core editable install leaves it in a build
-        # dir where the loader can't find it).
-        run: python -m pip install "./python[zarr]"
-      - name: Build Julia packages
-        run: julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.build("OpenJPH")'
-      - name: Cross-language Zarr interop
-        run: bash tests/interop/run.sh
-
-  # ------------------------------
-  interop-done:
-    needs: [interop-version-check, interop-roundtrip]
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Interop part is done"
 
   # ------------------------------ PUBLISH ------------------------------
 
@@ -281,7 +286,7 @@ lint:
   publish-github:
     name: Publish libs to Github
     if: success() && contains(github.ref, 'tags/v')
-    needs: [native-done, python-done, julia-done, interop-done]
+    needs: [native-done, python-done, julia-done, generic-done]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -326,7 +331,7 @@ lint:
   publish-pypi:
     name: Publish to Github and Pypi
     if: success() && startsWith(github.ref, 'refs/tags/v') && false
-    needs: [python-done, interop-done]
+    needs: [python-done, generic-done]
     runs-on: ubuntu-latest
     environment:
       name: pypi
