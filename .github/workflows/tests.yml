@@ -44,7 +44,7 @@ jobs:
   julia-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1'
@@ -61,7 +61,7 @@ jobs:
   interop:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -85,7 +85,7 @@ jobs:
   native-sanitizer:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install cmake
         run: sudo apt-get install -y cmake
       # Sanitizer flags go through CMAKE_<LANG>_FLAGS so the FetchContent'd
@@ -109,6 +109,6 @@ jobs:
   version-sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Versions agree across the monorepo
         run: bash tests/check_versions.sh
