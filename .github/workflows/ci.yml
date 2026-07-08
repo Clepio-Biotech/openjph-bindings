@@ -233,8 +233,13 @@ lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Extract version
+        # Exact same line is used in publish to check the tag
+        run: echo "CPP_VERSION=v$(sed -n 's/.*version\[\] = "\(.*\)".*/\1/p' xx.cpp)" >> "$GITHUB_ENV"
       - name: Versions agree across the monorepo
-        run: bash tests/check_versions.sh
+        run: |
+          echo "current env.CPP_VERSION: ${{ env.CPP_VERSION }}"
+          bash tests/check_versions.sh
 
   # ------------------------------
   interop-roundtrip:
@@ -284,8 +289,15 @@ lint:
       - uses: actions/checkout@v7
       - name: set version (which gets used as release name)
         run: |
-          echo "OPENJPH_C_VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
+          echo "TAG_VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
+          echo "CPP_VERSION=v$(sed -n 's/.*version\[\] = "\(.*\)".*/\1/p' xx.cpp)" >> "$GITHUB_ENV"
+          if [ "$CPP_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match source version ($CPP_VERSION)"
+            exit 1
+          fi
+          echo "Versions match: $CPP_VERSION and $TAG_VERSION"
         shell: bash
+      - name: Extract version
       - name: Download assets
         uses: actions/download-artifact@v8
         with:
@@ -299,8 +311,8 @@ lint:
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ env.OPENJPH_C_VERSION }}
-          name: ${{ env.OPENJPH_C_VERSION }}
+          tag_name: ${{ env.TAG_VERSION }}
+          name: ${{ env.TAG_VERSION }}
           files: |
             dist/**/*.zip
             dist/commit-sha

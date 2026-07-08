@@ -21,6 +21,9 @@
 
 namespace {
 
+// The reference version for the whole project
+static const char version[] = "0.1.0";
+
 /* OpenJPH's default error handler prints the detailed diagnostic (message,
    file, line) to stderr and then throws a generic
    std::runtime_error("ojph error") — so the useful text never reached the
