@@ -302,7 +302,6 @@ jobs:
           fi
           echo "Versions match: $CPP_VERSION and $TAG_VERSION"
         shell: bash
-      - name: Extract version
       - name: Download assets
         uses: actions/download-artifact@v8
         with:
