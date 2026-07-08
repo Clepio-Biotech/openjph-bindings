@@ -98,12 +98,12 @@ jobs:
           bash tools/extract_native_from_wheels.sh wheelhouse native-dist "$suffix"
       - name: Publish release (tag)
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: native-dist/*.tar.gz
       - name: Publish dev pre-release (PR)
         if: github.event_name == 'pull_request'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: dev-pr-${{ github.event.pull_request.number }}
           name: Dev build (PR #${{ github.event.pull_request.number }})
