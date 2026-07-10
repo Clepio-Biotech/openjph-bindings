@@ -210,7 +210,7 @@ def encode(
     if ret != _OPENJPH_OK:
         raise RuntimeError(f"openjph_encode: {err_buf.value.decode(errors='replace')}")
 
-    return out[:used.value].tobytes()
+    return out[: used.value].tobytes()
 
 
 def get_info(data: bytes | np.ndarray) -> tuple[tuple[int, ...], np.dtype]:
