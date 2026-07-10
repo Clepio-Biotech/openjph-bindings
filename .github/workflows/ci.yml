@@ -114,12 +114,14 @@ jobs:
           docker start -ai $CID
           mkdir -p dist
           docker cp $CID:/tmp/work/dist/. dist/.
+          docker cp $CID:/tmp/work/${{ env.ARCHIVE_NAME }} .
           docker rm $CID
       - name: Upload
         uses: actions/upload-artifact@v7
         with:
           path: 'native/${{ env.ARCHIVE_NAME }}'
           name: 'native-${{ matrix.name }}'
+          if-no-files-found: error
 
   # ------------------------------
   native-windows-build:
@@ -151,6 +153,7 @@ jobs:
         with:
           path: 'native/${{ env.ARCHIVE_NAME }}'
           name: 'native-${{ matrix.name }}'
+          if-no-files-found: error
 
   # ------------------------------
   native-macos-build:
@@ -183,6 +186,7 @@ jobs:
         with:
           path: 'native/${{ env.ARCHIVE_NAME }}'
           name: 'native-${{ matrix.name }}'
+          if-no-files-found: error
 
   # ------------------------------
   native-sanitizer:
