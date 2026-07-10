@@ -93,6 +93,32 @@ using Test
         @test_throws Exception openjph_decode(bad)                  # corrupt body
     end
 
+    @testset "get_info and in-place decode" begin
+        data = rand(UInt16, 32, 64, 3)
+        enc  = openjph_encode(data)
+        T, shape = openjph_get_info(enc)
+        @test T === UInt16
+        @test shape == (32, 64, 3)
+
+        out = Array{UInt16}(undef, shape)
+        @test openjph_decode!(out, enc) === out
+        @test out == data
+
+        # eltype and byte-size mismatches are rejected
+        @test_throws Exception openjph_decode!(Array{Int16}(undef, shape), enc)
+        @test_throws Exception openjph_decode!(Array{UInt16}(undef, 32, 64, 4), enc)
+
+        # A trailing singleton cannot be expressed by the SIZ marker: get_info
+        # reports 2-D, but decode! accepts the caller's 3-D shape since the
+        # byte count matches — the caller is the source of truth.
+        data1 = rand(UInt16, 32, 64, 1)
+        enc1  = openjph_encode(data1)
+        T1, shape1 = openjph_get_info(enc1)
+        @test shape1 == (32, 64)
+        out1 = Array{UInt16}(undef, 32, 64, 1)
+        @test openjph_decode!(out1, enc1) == data1
+    end
+
     # OpenJPH-internal failures must surface the library's detailed diagnostic
     # (message text, source location) in the thrown error. OpenJPH's default
     # handler prints that detail to stderr and throws a generic "ojph error" —

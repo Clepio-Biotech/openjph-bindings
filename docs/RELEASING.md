@@ -36,6 +36,12 @@ julia --project=@artifactgen tools/gen_artifacts.jl binaries-snapshot   # needs 
 When you cut a real `v*` tag, regenerate against it (`gen_artifacts.jl v0.1.0`) and delete the
 snapshot.
 
+**ABI changes require a lock-step refresh.** The caller-allocated-buffer API replaced the old
+exported symbols (`openjph_free` no longer exists), so package source and snapshot binaries must
+match: a standalone consumer mixing new Julia/Python source with old snapshot tarballs (or the
+reverse) fails at symbol lookup. When merging an ABI-changing PR, refresh the snapshot binaries in
+the same push as the source changes.
+
 ### Consuming these from a downstream package (on the branch)
 
 `[sources]` is only honoured for the **top-level** project, not for a dependency — so a downstream

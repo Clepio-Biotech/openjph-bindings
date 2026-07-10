@@ -1,9 +1,11 @@
 """FFI-boundary memory-leak regression test.
 
-The C API transfers buffer ownership across the FFI (openjph_free), so a leak
-would be invisible to Python-level tooling — it shows up only as unbounded RSS
-growth. This test is statistical (RSS slope over many cycles) and complements
-the deterministic C-level LeakSanitizer driver in native/tests/leak_check.c.
+A leak inside the native library (or in the ctypes glue around it) is
+invisible to Python-level tooling — it shows up only as unbounded RSS growth.
+This test is statistical (RSS slope over many cycles) and complements the
+deterministic C-level LeakSanitizer driver in native/tests/leak_check.c; it
+predates the caller-allocated-buffer API and ran unchanged across that
+rewrite, which is exactly its job.
 
 Linux-only: RSS is read from /proc/self/statm. All CI test jobs and manylinux
 wheel tests run on Linux; macOS/Windows wheel tests skip cleanly.
