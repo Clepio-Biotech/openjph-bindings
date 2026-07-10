@@ -6,7 +6,10 @@ on:
     branches:
       - main
     tags:
-      - 'v*.*'
+      # Only the C/native lineage's tags trigger this pipeline. Julia-v*/
+      # Python-v* are plain git tags with no CI action of their own — see
+      # docs/RELEASING.md.
+      - 'C-v*'
   pull_request:
     branches:
       - main
@@ -36,7 +39,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Extract version
         # Exact same line is used in publish to check the tag
-        run: echo "CPP_VERSION=v$(sed -n 's/.*version\[\] = "\(.*\)".*/\1/p' native/src/openjph_c.cpp)" >> "$GITHUB_ENV"
+        run: echo "CPP_VERSION=C-v$(sed -n 's/.*version\[\] = "\(.*\)".*/\1/p' native/src/openjph_c.cpp)" >> "$GITHUB_ENV"
       - name: Versions agree across the monorepo
         run: |
           echo "current env.CPP_VERSION: ${{ env.CPP_VERSION }}"
@@ -96,6 +99,9 @@ jobs:
     env:
       IMAGE: ${{ matrix.image }}
       ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.zip"
+      # Julia's Pkg.Artifacts only unpacks tarballs, not zips — this tarball
+      # is what julia/OpenJPH.jl/Artifacts.toml ends up pointing to.
+      ARCHIVE_NAME_TAR: "openjph_c-${{ matrix.name }}.tar.gz"
     steps:
       - uses: actions/checkout@v7
       - name: Build
@@ -110,16 +116,20 @@ jobs:
             cmake --build build  && \
             mkdir dist && cp ./build/*.so ./dist/ && cp ./include/*.h ./dist/ && \
             cd dist && \
-            zip -r ../${{ env.ARCHIVE_NAME }} *")
+            zip -r ../${{ env.ARCHIVE_NAME }} * && \
+            tar czf ../${{ env.ARCHIVE_NAME_TAR }} *")
           docker start -ai $CID
           mkdir -p dist
           docker cp $CID:/tmp/work/dist/. dist/.
           docker cp $CID:/tmp/work/${{ env.ARCHIVE_NAME }} .
+          docker cp $CID:/tmp/work/${{ env.ARCHIVE_NAME_TAR }} .
           docker rm $CID
       - name: Upload
         uses: actions/upload-artifact@v7
         with:
-          path: 'native/${{ env.ARCHIVE_NAME }}'
+          path: |
+            native/${{ env.ARCHIVE_NAME }}
+            native/${{ env.ARCHIVE_NAME_TAR }}
           name: 'native-${{ matrix.name }}'
           if-no-files-found: error
 
@@ -137,6 +147,7 @@ jobs:
             os: windows-11-arm
     env:
       ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.zip"
+      ARCHIVE_NAME_TAR: "openjph_c-${{ matrix.name }}.tar.gz"
     steps:
       - uses: actions/checkout@v7
       - name: Build
@@ -147,11 +158,14 @@ jobs:
           mkdir dist && cp ./build/Release/*.dll ./dist/ && cp ./include/*.h ./dist/
           cd dist
           7z a -tzip ../${{ env.ARCHIVE_NAME }} *;
+          tar czf ../${{ env.ARCHIVE_NAME_TAR }} *
         shell: bash
       - name: Upload
         uses: actions/upload-artifact@v7
         with:
-          path: 'native/${{ env.ARCHIVE_NAME }}'
+          path: |
+            native/${{ env.ARCHIVE_NAME }}
+            native/${{ env.ARCHIVE_NAME_TAR }}
           name: 'native-${{ matrix.name }}'
           if-no-files-found: error
 
@@ -171,6 +185,7 @@ jobs:
       # Need aligned_malloc, which is only available from 10.15+
       MACOSX_DEPLOYMENT_TARGET: "10.15"
       ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.zip"
+      ARCHIVE_NAME_TAR: "openjph_c-${{ matrix.name }}.tar.gz"
     steps:
       - uses: actions/checkout@v7
       - name: Build
@@ -181,10 +196,13 @@ jobs:
           mkdir dist && cp ./build/*.dylib ./dist/ && cp ./include/*.h ./dist/
           cd dist
           zip -r ../${{ env.ARCHIVE_NAME }} *
+          tar czf ../${{ env.ARCHIVE_NAME_TAR }} *
       - name: Upload
         uses: actions/upload-artifact@v7
         with:
-          path: 'native/${{ env.ARCHIVE_NAME }}'
+          path: |
+            native/${{ env.ARCHIVE_NAME }}
+            native/${{ env.ARCHIVE_NAME_TAR }}
           name: 'native-${{ matrix.name }}'
           if-no-files-found: error
 
@@ -289,7 +307,7 @@ jobs:
   # ------------------------------
   publish-github:
     name: Publish libs to Github
-    if: success() && contains(github.ref, 'tags/v')
+    if: success() && startsWith(github.ref, 'refs/tags/C-v')
     needs: [native-done, python-done, julia-done, generic-done]
     runs-on: ubuntu-latest
     permissions:
@@ -299,7 +317,7 @@ jobs:
       - name: set version (which gets used as release name)
         run: |
           echo "TAG_VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
-          echo "CPP_VERSION=v$(sed -n 's/.*version\[\] = "\(.*\)".*/\1/p' native/src/openjph_c.cpp)" >> "$GITHUB_ENV"
+          echo "CPP_VERSION=C-v$(sed -n 's/.*version\[\] = "\(.*\)".*/\1/p' native/src/openjph_c.cpp)" >> "$GITHUB_ENV"
           if [ "$CPP_VERSION" != "$TAG_VERSION" ]; then
             echo "::error::Tag version ($TAG_VERSION) does not match source version ($CPP_VERSION)"
             exit 1
@@ -323,6 +341,7 @@ jobs:
           name: ${{ env.TAG_VERSION }}
           files: |
             dist/**/*.zip
+            dist/**/*.tar.gz
             dist/commit-sha
           body: |
             Precompiled binary modules.
