@@ -345,7 +345,7 @@ jobs:
       with:
         python-version: '3.14'
     - name: Download assets
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         path: dist
     - name: Flatten dist dir
