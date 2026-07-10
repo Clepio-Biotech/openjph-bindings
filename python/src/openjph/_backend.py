@@ -188,7 +188,7 @@ def encode(
     err_buf = ctypes.create_string_buffer(1024)
     used = ctypes.c_size_t(0)
 
-    def _call(buf: bytearray) -> int:
+    def _call(buf: np.ndarray) -> int:
         c_buf = (ctypes.c_uint8 * len(buf)).from_buffer(buf)
         return _lib.openjph_encode(
             ctypes.byref(img),
@@ -200,18 +200,17 @@ def encode(
             ctypes.c_size_t(1024),
         )
 
-    out = bytearray(bound)
+    out = np.empty(bound, np.uint8)
     ret = _call(out)
     if ret == _OPENJPH_ERR_BUFFER_TOO_SMALL:
         # The bound is a generous estimate, not a guarantee; C reported the
         # exact required size, so a single retry always suffices.
-        out = bytearray(int(used.value))
+        out = np.empty(int(used.value), np.uint8)
         ret = _call(out)
     if ret != _OPENJPH_OK:
         raise RuntimeError(f"openjph_encode: {err_buf.value.decode(errors='replace')}")
 
-    del out[used.value :]
-    return bytes(out)
+    return out[:used.value].tobytes()
 
 
 def get_info(data: bytes | np.ndarray) -> tuple[tuple[int, ...], np.dtype]:
