@@ -120,6 +120,7 @@ jobs:
         with:
           path: 'native/${{ env.ARCHIVE_NAME }}'
           name: 'native-${{ matrix.name }}'
+          if-no-files-found: error
 
   # ------------------------------
   native-windows-build:
@@ -151,6 +152,7 @@ jobs:
         with:
           path: 'native/${{ env.ARCHIVE_NAME }}'
           name: 'native-${{ matrix.name }}'
+          if-no-files-found: error
 
   # ------------------------------
   native-macos-build:
@@ -183,6 +185,7 @@ jobs:
         with:
           path: 'native/${{ env.ARCHIVE_NAME }}'
           name: 'native-${{ matrix.name }}'
+          if-no-files-found: error
 
   # ------------------------------
   native-sanitizer:
