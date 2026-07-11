@@ -6,9 +6,7 @@ on:
     branches:
       - main
     tags:
-      # Only the C/native lineage's tags trigger this pipeline. Julia-v*/
-      # Python-v* are plain git tags with no CI action of their own — see
-      # docs/RELEASING.md.
+      # Only the C/native lineage's tags trigger this build/publish pipeline.
       - 'C-v*'
   pull_request:
     branches:

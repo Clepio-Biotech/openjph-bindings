@@ -10,13 +10,16 @@ own release tag (see discussion #14) — a change to one no longer forces a rele
 - **Python** (`python/`) — its own version in `pyproject.toml`. PyPI publishing is currently
   disabled everywhere (`wheels.yml`'s triggers are commented out; `ci.yml`'s `publish-pypi` job is
   gated `&& false`) — standing up Python's own tag/publish pipeline is separate, future work.
-- **Julia** (`julia/OpenJPH.jl`, `julia/ZarrCompressorJPH.jl`) — tag `Julia-vX.Y.Z`. This is a
-  plain git tag with no CI action of its own: Julia isn't distributed through a binary pipeline the
-  way C is, so tagging just marks the commit where the `Project.toml`s were bumped.
+- **Julia** — `OpenJPH.jl` and `ZarrCompressorJPH.jl` each version and tag independently
+  (`OpenJPH.jl-vX.Y.Z`, `ZarrCompressorJPH.jl-vX.Y.Z`), not a shared "Julia" tag: they're two
+  packages with independent `[compat]`-declared compatibility, not one lineage. Both are plain git
+  tags with no CI action of their own — Julia isn't distributed through a binary pipeline the way C
+  is, so tagging just marks the commit where a `Project.toml` was bumped.
 
 `tests/check_versions.sh` enforces the parts of this that can drift silently: C's own version
-tracks the OpenJPH version it wraps, Julia's two packages agree with each other, and Python's
-`_BINDINGS_TAG` (below) points at the current C tag.
+tracks the OpenJPH version it wraps, and Python's `_BINDINGS_TAG` (below) points at the current C
+tag. `OpenJPH.jl` and `ZarrCompressorJPH.jl` are deliberately not checked against each other —
+`ZarrCompressorJPH.jl` declares which `OpenJPH` versions it supports via its own `[compat]` bound.
 
 ## Cutting a C release
 
@@ -24,7 +27,7 @@ tracks the OpenJPH version it wraps, Julia's two packages agree with each other,
    wrapper-revision digit) and confirm `bash tests/check_versions.sh` passes.
 2. Tag the commit `C-vX.Y.Z.W` and push it. `.github/workflows/ci.yml`'s tag trigger is scoped to
    `C-v*` specifically, so this is the only tag shape that kicks off the native build/publish
-   pipeline (a `Julia-v*`/future `Python-v*` tag push does nothing here).
+   pipeline (a Julia or future Python package tag push does nothing here).
 3. `native-linux-build`/`native-windows-build`/`native-macos-build` build `libopenjph_c` for all 6
    platforms (`linux-{x86_64,aarch64}`, `macos-{x86_64,aarch64}`, `windows-{x86_64,aarch64}`) and
    package **both** a `.zip` and a `.tar.gz` per platform — Julia's Pkg.Artifacts machinery only
@@ -96,10 +99,23 @@ doesn't try to test native+Julia changes together in one pipeline — the wrappe
 against its pinned, published release; verifying an in-progress native change against Julia is
 this manual step, done before cutting the next `C-v*` tag.
 
-## Julia: installing from a branch instead of a tag
+## Julia: pinning to a branch, commit, or tag
+
+`julia/ZarrCompressorJPH.jl/Project.toml` itself declares `OpenJPH` this way (currently pinned to
+`rev = "main"`):
+
+```toml
+[sources]
+OpenJPH = {url = "https://github.com/Clepio-Biotech/openjph-bindings", subdir = "julia/OpenJPH.jl", rev = "main"}
+```
+
+Bumping `rev` (e.g. to a specific `OpenJPH.jl-vX.Y.Z` tag once one exists) is a deliberate, manual
+edit — it does not track local changes to `../OpenJPH.jl`, on purpose (see the versioning section
+above). To co-develop both packages in one branch instead, use `Pkg.develop(path="../OpenJPH.jl")`
+in your own local session rather than changing this file.
 
 `[sources]` is only honoured for the **top-level** project, not for a dependency, so a downstream
-package must declare both modules:
+package consuming both must declare both modules itself the same way:
 
 ```toml
 [sources]
@@ -108,7 +124,7 @@ ZarrCompressorJPH = {url = "https://github.com/Clepio-Biotech/openjph-bindings",
 ```
 
 `OpenJPH` still resolves its binary from whatever `Artifacts.toml` says at that `rev` — same
-mechanism regardless of whether `rev` is a branch, commit, or `Julia-v*` tag.
+mechanism regardless of whether `rev` is a branch, commit, or tag.
 
 ## Notes / pitfalls
 

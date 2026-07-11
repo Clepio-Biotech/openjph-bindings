@@ -8,12 +8,15 @@ JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 OpenJPH = "8c589a84-a498-4fe3-acea-e589744a4834"
 Zarr = "0a941bbe-ad1d-11e8-39d9-ab76183a1d99"
 
-# Unregistered dependency on the sibling OpenJPH package. The path form resolves
-# the monorepo for local development (no committed Manifest needed). This will
-# switch to the {url, subdir, rev} form once OpenJPH ships prebuilt binaries via
-# Artifacts.toml, so a standalone `Pkg.add(url=..., subdir=...)` also resolves.
+# Unregistered dependency on the sibling OpenJPH package, pinned to a specific
+# ref rather than the local path — OpenJPH now resolves its native library
+# solely from Artifacts.toml, so this works for a standalone `Pkg.add` too.
+# Bumping `rev` is a deliberate, manual step (see docs/RELEASING.md); it does
+# not track local edits to ../OpenJPH.jl. Co-developing both packages in one
+# branch: use `Pkg.develop(path="../OpenJPH.jl")` in your own local session
+# instead of changing this.
 [sources]
-OpenJPH = {path = "../OpenJPH.jl"}
+OpenJPH = {url = "https://github.com/Clepio-Biotech/openjph-bindings", subdir = "julia/OpenJPH.jl", rev = "main"}
 
 [compat]
 JSON = "1.6.1"
