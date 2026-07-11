@@ -67,8 +67,8 @@ jobs:
         # _backend.py (a scikit-build-core editable install leaves it in a build
         # dir where the loader can't find it).
         run: python -m pip install "./python[zarr]"
-      - name: Build Julia packages
-        run: julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.build("OpenJPH")'
+      - name: Instantiate Julia packages
+        run: julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.instantiate()'
       - name: Cross-language Zarr interop
         run: bash tests/interop/run.sh
 
@@ -282,15 +282,13 @@ jobs:
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1'
-      - name: Install cmake
-        run: sudo apt-get install -y cmake
-      # No NATIVE_PATH on purpose: this exercises build.jl's in-monorepo
-      # sibling-detection of native/ — the path a fresh monorepo build actually
-      # uses, and the one whose breakage previously shipped unnoticed.
+      # No local build override of any kind — this always resolves
+      # libopenjph_c from the Pkg Artifact pinned in Artifacts.toml, the
+      # same path every consumer of OpenJPH.jl takes.
       - name: Test OpenJPH
-        run: julia --project=julia/OpenJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.build("OpenJPH"); Pkg.test()'
+        run: julia --project=julia/OpenJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.test()'
       - name: Test ZarrCompressorJPH
-        run: julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.build("OpenJPH"); Pkg.test()'
+        run: julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.test()'
 
   # ------------------------------
   julia-done:

@@ -23,26 +23,27 @@ source is only needed when developing the C layer itself.
 | | Julia | Python |
 |---|---|---|
 | **Prebuilt (default)** | Pkg downloads the right per-platform binary via `OpenJPH.jl/Artifacts.toml` from a GitHub Release — no C++ toolchain needed | `pip install pyopenjph` installs a wheel that already contains the binary — cmake never runs |
-| **Local build (override)** | set `NATIVE_PATH`, or build inside the monorepo (the sibling `native/` is auto-detected); `build.jl` runs cmake and the local build **takes precedence over the artifact** | scikit-build-core runs cmake on `python/CMakeLists.txt`, which finds `native/` via `NATIVE_PATH` → sibling → FetchContent |
+| **Local build (override)** | build `native/` yourself with `tools/build_native_local.jl`, then point at it with a `~/.julia/artifacts/Overrides.toml` entry — the package itself has no build step or local-detection logic | set `NATIVE_PATH`, or build inside the monorepo (the sibling `native/` is auto-detected); scikit-build-core runs cmake via `python/CMakeLists.txt` |
 
-So a normal install needs no compiler on either side. Developers who change the C layer get a local
-build by setting `NATIVE_PATH` (or, in the monorepo, automatically from the sibling `native/`),
-which overrides the prebuilt binary. See `docs/RELEASING.md` for how the Julia binaries are built
-(recycled from the Python wheels) and published as artifacts.
+So a normal install needs no compiler on either side. Julia always resolves the native library
+from the published Pkg Artifact; developers who need to test an in-progress native change against
+Julia use `tools/build_native_local.jl` plus an `Overrides.toml` entry (see `docs/RELEASING.md`)
+rather than any setting inside the package. Python developers still use `NATIVE_PATH` as before.
 
-### Setting `NATIVE_PATH`
+### Setting `NATIVE_PATH` (Python only)
 
-A local build (overriding the prebuilt binary) is triggered by setting `NATIVE_PATH` to the path of a local `native/` directory. This can be done via:
+A local Python build (overriding the prebuilt wheel) is triggered by setting `NATIVE_PATH` to the path of a local `native/` directory. This can be done via:
 
 - A shell environment variable: `NATIVE_PATH=/path/to/native`
-- A `.env` file in the package root (`julia/OpenJPH.jl/.env` or `python/.env`):
+- A `.env` file in `python/.env`:
   ```
   NATIVE_PATH=/path/to/openjph-bindings/native
   ```
 
-Inside this monorepo `NATIVE_PATH` is **optional**: the Julia `build.jl` and the Python
-`CMakeLists.txt` both auto-detect the sibling `native/` directory, so a fresh monorepo build works
-with no environment variable. Set `NATIVE_PATH` only to point at a `native/` directory elsewhere.
+Inside this monorepo `NATIVE_PATH` is **optional**: `python/CMakeLists.txt` auto-detects the
+sibling `native/` directory, so a fresh monorepo build works with no environment variable. Set
+`NATIVE_PATH` only to point at a `native/` directory elsewhere. This does not apply to Julia — see
+`docs/RELEASING.md` for how to test a local native build against `OpenJPH.jl`.
 
 ---
 
@@ -57,13 +58,16 @@ with no environment variable. Set `NATIVE_PATH` only to point at a `native/` dir
 ### Julia
 
 ```bash
-# Build from the sibling native/ (auto-detected in the monorepo — no NATIVE_PATH needed)
-julia --project=julia/OpenJPH.jl -e 'import Pkg; Pkg.build("OpenJPH")'
+# Resolves libopenjph_c from the published Pkg Artifact — no local build needed.
+julia --project=julia/OpenJPH.jl -e 'import Pkg; Pkg.instantiate()'
 
 # Run tests (Pkg.test with no argument tests the active project's package)
 julia --project=julia/OpenJPH.jl           -e 'import Pkg; Pkg.test()'
 julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.test()'
 ```
+
+To test against an in-progress native change instead, see `docs/RELEASING.md`
+(`tools/build_native_local.jl` + `Overrides.toml`).
 
 ### Python
 
