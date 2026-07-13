@@ -123,10 +123,13 @@ using Test
         @test_throws Exception openjph_decode(enc)
     end
 
-    # FFI-boundary leak regression: C-allocated buffers are copied and freed on
-    # every call, so a leak is invisible to Julia's GC and shows up only as
-    # unbounded RSS growth. Statistical complement to the deterministic
-    # LeakSanitizer driver in native/tests/leak_check.c. Linux-only (statm).
+    # FFI-boundary leak regression: decode writes straight into Julia-owned
+    # memory (nothing to leak there), and encode's C-allocated buffer is
+    # zero-copy-wrapped with an openjph_free finalizer rather than copied —
+    # if that finalizer never runs or openjph_free leaks internally, it's
+    # invisible to normal Julia bookkeeping and shows up only as unbounded
+    # RSS growth. Statistical complement to the deterministic LeakSanitizer
+    # driver in native/tests/leak_check.c. Linux-only (statm).
     @testset "Memory: encode/decode RSS stable" begin
         if !Sys.islinux()
             @info "RSS leak check skipped (/proc/self/statm is Linux-only)"
