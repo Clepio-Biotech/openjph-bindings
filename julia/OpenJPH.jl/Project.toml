@@ -1,6 +1,6 @@
 name = "OpenJPH"
 uuid = "8c589a84-a498-4fe3-acea-e589744a4834"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["DarioSarra <dariosarra@gmail.com>"]
 
 [deps]
