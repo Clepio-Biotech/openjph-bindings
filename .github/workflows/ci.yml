@@ -155,8 +155,12 @@ jobs:
   # ------------------------------
   publish-github:
     name: Publish libs to Github
+    # Only depends on native's build artifacts (the only thing this job
+    # publishes) — gating on python-done/julia-done/generic-done as well
+    # meant an unrelated failure (e.g. generic-version-check) silently
+    # skipped the release with no tarballs published at all.
     if: success() && startsWith(github.ref, 'refs/tags/C-v')
-    needs: [native, python-done, julia-done, generic-done]
+    needs: [native]
     runs-on: ubuntu-latest
     permissions:
       contents: write
