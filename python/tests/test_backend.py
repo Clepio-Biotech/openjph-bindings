@@ -118,6 +118,51 @@ def test_roundtrip_3d_stack_distinct_slices() -> None:
     assert len({decoded[s].tobytes() for s in range(Z)}) == Z  # slices distinct
 
 
+def test_get_info_matches_decode() -> None:
+    data = _make_uint16((32, 48))
+    encoded = openjph_backend.encode(data)
+
+    shape, dtype = openjph_backend.get_info(encoded)
+    decoded = openjph_backend.decode(encoded)
+
+    assert shape == decoded.shape
+    assert dtype == decoded.dtype
+
+
+def test_decode_into_caller_buffer() -> None:
+    data = _make_uint16((32, 48))
+    encoded = openjph_backend.encode(data)
+
+    out = np.empty((32, 48), dtype=np.uint16)
+    result = openjph_backend.decode(encoded, out=out)
+
+    assert result is out
+    np.testing.assert_array_equal(out, data)
+
+
+def test_decode_into_caller_buffer_restores_singleton_axis() -> None:
+    # get_info/decode alone can't distinguish (1, h, w) from (h, w) — a caller
+    # who knows the intended shape passes a matching `out` instead.
+    data = _make_uint16((1, 24, 32))
+    encoded = openjph_backend.encode(data)
+
+    out = np.empty((1, 24, 32), dtype=np.uint16)
+    result = openjph_backend.decode(encoded, out=out)
+
+    assert result is out
+    np.testing.assert_array_equal(out, data)
+
+
+def test_decode_into_caller_buffer_rejects_mismatch() -> None:
+    data = _make_uint16((32, 48))
+    encoded = openjph_backend.encode(data)
+
+    with pytest.raises(ValueError, match="dtype"):
+        openjph_backend.decode(encoded, out=np.empty((32, 48), dtype=np.uint8))
+    with pytest.raises(ValueError, match="bytes"):
+        openjph_backend.decode(encoded, out=np.empty((32, 47), dtype=np.uint16))
+
+
 def test_error_message_carries_openjph_detail() -> None:
     # OpenJPH-internal failures must surface the library's detailed diagnostic
     # (message text, source location) in the raised exception. OpenJPH's

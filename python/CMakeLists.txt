@@ -35,7 +35,7 @@ if(NOT TARGET openjph_c)
     # _BINDINGS_TAG tracks the C lineage's own release tag (see
     # tests/check_versions.sh), not Python's own version.
     include(FetchContent)
-    set(_BINDINGS_TAG "C-v0.29.0.0")
+    set(_BINDINGS_TAG "C-v0.29.0.1")
     message(STATUS "pyopenjph: NATIVE_PATH not set — downloading openjph-bindings ${_BINDINGS_TAG}")
     FetchContent_Declare(openjph_bindings
       GIT_REPOSITORY https://github.com/Clepio-Biotech/openjph-bindings
