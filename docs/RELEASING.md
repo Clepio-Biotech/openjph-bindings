@@ -30,12 +30,12 @@ tag. `OpenJPH.jl` and `ZarrCompressorJPH.jl` are deliberately not checked agains
    pipeline (a Julia or future Python package tag push does nothing here).
 3. `native-linux-build`/`native-windows-build`/`native-macos-build` build `libopenjph_c` for all 6
    platforms (`linux-{x86_64,aarch64}`, `macos-{x86_64,aarch64}`, `windows-{x86_64,aarch64}`) and
-   package **both** a `.zip` and a `.tar.gz` per platform — Julia's Pkg.Artifacts machinery only
-   unpacks tarballs, not zips, so the `.tar.gz` is what Julia actually consumes.
-4. `publish-github` attaches all of it (zips, tarballs, a `commit-sha` file) to a GitHub Release
-   named after the tag.
-5. Verify before moving on: `gh release view C-vX.Y.Z.W --json assets` should show 12 files (2
-   archive formats × 6 platforms) plus `commit-sha`.
+   package a `.tar.gz` per platform — Julia's Pkg.Artifacts machinery only unpacks tarballs, not
+   zips, so that's the only archive format shipped.
+4. `publish-github` attaches all of it (tarballs, a `commit-sha` file) to a GitHub Release named
+   after the tag.
+5. Verify before moving on: `gh release view C-vX.Y.Z.W --json assets` should show 6 files (one
+   `.tar.gz` per platform) plus `commit-sha`.
 
 ## Pointing Julia at a C release
 

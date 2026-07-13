@@ -96,10 +96,9 @@ jobs:
             image: manylinux_2_28_aarch64
     env:
       IMAGE: ${{ matrix.image }}
-      ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.zip"
       # Julia's Pkg.Artifacts only unpacks tarballs, not zips — this tarball
       # is what julia/OpenJPH.jl/Artifacts.toml ends up pointing to.
-      ARCHIVE_NAME_TAR: "openjph_c-${{ matrix.name }}.tar.gz"
+      ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.tar.gz"
     steps:
       - uses: actions/checkout@v7
       - name: Build
@@ -109,25 +108,20 @@ jobs:
             cp -r /tmp/src/. . && \
             rm -rf ./build && \
             export USER=root && \
-            dnf install -y zip && \
             cmake -B build . -DCMAKE_BUILD_TYPE=Release && \
             cmake --build build  && \
             mkdir dist && cp ./build/*.so ./dist/ && cp ./include/*.h ./dist/ && \
             cd dist && \
-            zip -r ../${{ env.ARCHIVE_NAME }} * && \
-            tar czf ../${{ env.ARCHIVE_NAME_TAR }} *")
+            tar czf ../${{ env.ARCHIVE_NAME }} *")
           docker start -ai $CID
           mkdir -p dist
           docker cp $CID:/tmp/work/dist/. dist/.
           docker cp $CID:/tmp/work/${{ env.ARCHIVE_NAME }} .
-          docker cp $CID:/tmp/work/${{ env.ARCHIVE_NAME_TAR }} .
           docker rm $CID
       - name: Upload
         uses: actions/upload-artifact@v7
         with:
-          path: |
-            native/${{ env.ARCHIVE_NAME }}
-            native/${{ env.ARCHIVE_NAME_TAR }}
+          path: 'native/${{ env.ARCHIVE_NAME }}'
           name: 'native-${{ matrix.name }}'
           if-no-files-found: error
 
@@ -144,8 +138,7 @@ jobs:
           - name:  windows-aarch64
             os: windows-11-arm
     env:
-      ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.zip"
-      ARCHIVE_NAME_TAR: "openjph_c-${{ matrix.name }}.tar.gz"
+      ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.tar.gz"
     steps:
       - uses: actions/checkout@v7
       - name: Build
@@ -155,15 +148,12 @@ jobs:
           cmake --build build --config Release
           mkdir dist && cp ./build/Release/*.dll ./dist/ && cp ./include/*.h ./dist/
           cd dist
-          7z a -tzip ../${{ env.ARCHIVE_NAME }} *;
-          tar czf ../${{ env.ARCHIVE_NAME_TAR }} *
+          tar czf ../${{ env.ARCHIVE_NAME }} *
         shell: bash
       - name: Upload
         uses: actions/upload-artifact@v7
         with:
-          path: |
-            native/${{ env.ARCHIVE_NAME }}
-            native/${{ env.ARCHIVE_NAME_TAR }}
+          path: 'native/${{ env.ARCHIVE_NAME }}'
           name: 'native-${{ matrix.name }}'
           if-no-files-found: error
 
@@ -182,8 +172,7 @@ jobs:
     env:
       # Need aligned_malloc, which is only available from 10.15+
       MACOSX_DEPLOYMENT_TARGET: "10.15"
-      ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.zip"
-      ARCHIVE_NAME_TAR: "openjph_c-${{ matrix.name }}.tar.gz"
+      ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.tar.gz"
     steps:
       - uses: actions/checkout@v7
       - name: Build
@@ -193,14 +182,11 @@ jobs:
           cmake --build build
           mkdir dist && cp ./build/*.dylib ./dist/ && cp ./include/*.h ./dist/
           cd dist
-          zip -r ../${{ env.ARCHIVE_NAME }} *
-          tar czf ../${{ env.ARCHIVE_NAME_TAR }} *
+          tar czf ../${{ env.ARCHIVE_NAME }} *
       - name: Upload
         uses: actions/upload-artifact@v7
         with:
-          path: |
-            native/${{ env.ARCHIVE_NAME }}
-            native/${{ env.ARCHIVE_NAME_TAR }}
+          path: 'native/${{ env.ARCHIVE_NAME }}'
           name: 'native-${{ matrix.name }}'
           if-no-files-found: error
 
@@ -336,7 +322,6 @@ jobs:
           tag_name: ${{ env.TAG_VERSION }}
           name: ${{ env.TAG_VERSION }}
           files: |
-            dist/**/*.zip
             dist/**/*.tar.gz
             dist/commit-sha
           body: |
