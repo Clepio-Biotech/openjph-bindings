@@ -3,8 +3,8 @@
 # read back identically through the Julia codec (compared against a plain-codec
 # store to factor out Zarr.jl's axis-order convention).
 #
-# Requires: pyopenjph installed with its native lib (e.g. `pip install -e python[zarr]`
-# with NATIVE_PATH set), and the Julia OpenJPH/ZarrCompressorJPH packages built.
+# Requires: pyopenjph installed (`pip install python/[zarr]` — the build downloads
+# its pinned C release binary), and the Julia OpenJPH/ZarrCompressorJPH packages built.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

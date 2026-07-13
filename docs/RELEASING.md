@@ -7,19 +7,22 @@ own release tag (see discussion #14) — a change to one no longer forces a rele
   (`native/CMakeLists.txt`'s `FetchContent_Declare` `GIT_TAG`) and `W` is a wrapper-revision digit
   we bump on wrapper-only changes. This is the only lineage with an automated release pipeline
   today.
-- **Python** (`python/`) — its own version in `pyproject.toml`. PyPI publishing is currently
-  disabled everywhere (`wheels.yml`'s triggers are commented out; `ci.yml`'s `publish-pypi` job is
-  gated `&& false`) — standing up Python's own tag/publish pipeline is separate, future work.
+- **Python** (`python/`) — its own version in `pyproject.toml`, tag `Python-vX.Y.Z`, released
+  through `.github/workflows/wheels.yml` (see "Cutting a Python release" below). The wheels ship
+  the prebuilt `libopenjph_c` from the `C-v*` release pinned in `pyproject.toml`
+  `[tool.pyopenjph]` — nothing is compiled at wheel-build or install time.
 - **Julia** — `OpenJPH.jl` and `ZarrCompressorJPH.jl` each version and tag independently
   (`OpenJPH.jl-vX.Y.Z`, `ZarrCompressorJPH.jl-vX.Y.Z`), not a shared "Julia" tag: they're two
   packages with independent `[compat]`-declared compatibility, not one lineage. Both are plain git
   tags with no CI action of their own — Julia isn't distributed through a binary pipeline the way C
   is, so tagging just marks the commit where a `Project.toml` was bumped.
 
-`tests/check_versions.sh` enforces the parts of this that can drift silently: C's own version
-tracks the OpenJPH version it wraps, and Python's `_BINDINGS_TAG` (below) points at the current C
-tag. `OpenJPH.jl` and `ZarrCompressorJPH.jl` are deliberately not checked against each other —
-`ZarrCompressorJPH.jl` declares which `OpenJPH` versions it supports via its own `[compat]` bound.
+`tests/check_versions.sh` enforces the one invariant that can drift silently: C's own version
+tracks the OpenJPH version it wraps. Python's C-release pin and Julia's `Artifacts.toml` point at
+published, immutable `C-v*` releases and are exercised at build/release time, so they're not
+checked continuously. `OpenJPH.jl` and `ZarrCompressorJPH.jl` are deliberately not checked against
+each other — `ZarrCompressorJPH.jl` declares which `OpenJPH` versions it supports via its own
+`[compat]` bound.
 
 ## Cutting a C release
 
@@ -52,6 +55,46 @@ for each of the 6 platforms' tarballs. Commit it. `OpenJPH.jl`'s `src/OpenJPH.jl
 `libopenjph_c` from this artifact — there is no local-build override or in-monorepo `native/`
 detection in the package itself (that machinery, and the top-level-`const` bug it caused, was
 removed; see git history if you need the details).
+
+## Cutting a Python release
+
+Python follows the wgpu-py model: the package never compiles C — every build (wheel or source
+install) downloads the prebuilt `libopenjph_c` from the `C-v*` release pinned in
+`python/pyproject.toml` `[tool.pyopenjph] native-release` (the download lives in
+`python/hatch_build.py`, a hatchling build hook). Cutting a `Python-v*` release is therefore the
+one deliberate moment Python switches C binary:
+
+1. If the release should ship a newer C release, bump the `[tool.pyopenjph] native-release` pin
+   (a normal, reviewed commit — CI's `python-tests` immediately runs against the new binary).
+2. Bump `[project] version` in `python/pyproject.toml`.
+3. Tag the commit `Python-vX.Y.Z` and push it. `wheels.yml` then:
+   - builds all 6 platform wheels on one Linux runner (`tools/build_wheels.py` — each wheel is
+     `py3-none-<platform>`, containing that platform's binary from the pinned release),
+   - installs and tests the matching wheel on all 6 platforms' real runners,
+   - verifies the tag matches `pyproject.toml`'s version and publishes wheels + sdist to PyPI.
+
+`wheels.yml` can also be run manually (`workflow_dispatch`), optionally overriding which `C-v*`
+release to package — useful for a dry run before committing a pin bump.
+
+## Testing a local native change against Python
+
+The package has no build-from-source path; use the runtime override (the wgpu-py `WGPU_LIB_PATH`
+pattern) — no reinstall needed:
+
+```bash
+cmake -B build native/ -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
+PYOPENJPH_LIB_PATH=$PWD/build/libopenjph_c.so pytest python/tests
+```
+
+To try a *different published* C release instead, download it first:
+
+```bash
+python tools/download_native.py --release C-vX.Y.Z.W
+```
+
+and point `PYOPENJPH_LIB_PATH` at the printed library. As with Julia below, this manual step is
+how an in-progress native change is verified against Python before cutting the next `C-v*` tag —
+CI always tests the wrapper against its pinned, published release.
 
 ## Testing a local native change against Julia
 
@@ -128,9 +171,5 @@ mechanism regardless of whether `rev` is a branch, commit, or tag.
 
 ## Notes / pitfalls
 
-- `.github/workflows/wheels.yml`'s `publish-native` job is **dead code today**: its `pull_request`/
-  `push` triggers were commented out when `ci.yml` took over native builds, leaving only
-  `workflow_dispatch`. It also uses different asset naming (a `lib` prefix) and only covers 5
-  platforms (no `windows-aarch64`). Don't treat it as a live part of the pipeline.
 - Because OpenJPH is statically embedded in `libopenjph_c` (`WHOLE_ARCHIVE`), the built library has
   no external dependencies to worry about across platforms.

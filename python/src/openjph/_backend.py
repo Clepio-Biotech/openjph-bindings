@@ -25,10 +25,16 @@ _lib_path = _pkg_dir / _lib_name
 if _platform == "win32" and hasattr(os, "add_dll_directory"):
     os.add_dll_directory(str(_pkg_dir))
 
+# Local-dev override (the wgpu-py WGPU_LIB_PATH pattern): point at a custom
+# build of libopenjph_c without reinstalling the package.
+_lib_override = os.environ.get("PYOPENJPH_LIB_PATH")
+
 try:
-    _lib = ctypes.CDLL(str(_lib_path) if _lib_path.exists() else _lib_name)
+    _lib = ctypes.CDLL(
+        _lib_override or (str(_lib_path) if _lib_path.exists() else _lib_name)
+    )
 except OSError as e:
-    raise ImportError(f"Could not load {_lib_name}: {e}") from e
+    raise ImportError(f"Could not load {_lib_override or _lib_name}: {e}") from e
 
 # ---- C struct mirrors ----
 

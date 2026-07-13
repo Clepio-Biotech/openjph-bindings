@@ -16,11 +16,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Install cmake
-        run: sudo apt-get install -y cmake
+      # No compilation: hatch_build.py downloads the prebuilt libopenjph_c
+      # from the C-v* release pinned in pyproject.toml — the same path every
+      # consumer of pyopenjph takes (mirroring julia-tests and Artifacts.toml).
       - name: Install
-        env:
-          NATIVE_PATH: ${{ github.workspace }}/native
         run: python -m pip install ".[test,zarr]"
       - name: Test
         run: pytest tests
