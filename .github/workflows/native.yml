@@ -1,0 +1,150 @@
+name: Native
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+
+  # ------------------------------
+  native-linux-build:
+    name: Native build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+            image: manylinux_2_28_x86_64
+          - name: linux-aarch64
+            os: ubuntu-24.04-arm
+            image: manylinux_2_28_aarch64
+    env:
+      IMAGE: ${{ matrix.image }}
+      # Julia's Pkg.Artifacts only unpacks tarballs, not zips — this tarball
+      # is what julia/OpenJPH.jl/Artifacts.toml ends up pointing to.
+      ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.tar.gz"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        run: |
+          cd native
+          CID=$(docker create -t -w /tmp/work -v $PWD:/tmp/src:ro quay.io/pypa/$IMAGE bash -c "\
+            cp -r /tmp/src/. . && \
+            rm -rf ./build && \
+            export USER=root && \
+            cmake -B build . -DCMAKE_BUILD_TYPE=Release && \
+            cmake --build build  && \
+            mkdir dist && cp ./build/*.so ./dist/ && cp ./include/*.h ./dist/ && \
+            cd dist && \
+            tar czf ../${{ env.ARCHIVE_NAME }} *")
+          docker start -ai $CID
+          mkdir -p dist
+          docker cp $CID:/tmp/work/dist/. dist/.
+          docker cp $CID:/tmp/work/${{ env.ARCHIVE_NAME }} .
+          docker rm $CID
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          path: 'native/${{ env.ARCHIVE_NAME }}'
+          name: 'native-${{ matrix.name }}'
+          if-no-files-found: error
+
+  # ------------------------------
+  native-windows-build:
+    name: Native build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: windows-x86_64
+            os: windows-latest
+          - name:  windows-aarch64
+            os: windows-11-arm
+    env:
+      ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.tar.gz"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        run: |
+          cd native
+          cmake -B build . -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
+          mkdir dist && cp ./build/Release/*.dll ./dist/ && cp ./include/*.h ./dist/
+          cd dist
+          tar czf ../${{ env.ARCHIVE_NAME }} *
+        shell: bash
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          path: 'native/${{ env.ARCHIVE_NAME }}'
+          name: 'native-${{ matrix.name }}'
+          if-no-files-found: error
+
+  # ------------------------------
+  native-macos-build:
+    name: Native build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: macos-aarch64
+            os: macos-latest
+          - name: macos-x86_64
+            os: macos-15-intel
+    env:
+      # Need aligned_malloc, which is only available from 10.15+
+      MACOSX_DEPLOYMENT_TARGET: "10.15"
+      ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.tar.gz"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        run: |
+          cd native
+          cmake -B build . -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+          mkdir dist && cp ./build/*.dylib ./dist/ && cp ./include/*.h ./dist/
+          cd dist
+          tar czf ../${{ env.ARCHIVE_NAME }} *
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          path: 'native/${{ env.ARCHIVE_NAME }}'
+          name: 'native-${{ matrix.name }}'
+          if-no-files-found: error
+
+  # ------------------------------
+  native-sanitizer:
+    name: 'Native Sanitizer'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install cmake
+        run: sudo apt-get install -y cmake
+      # Sanitizer flags go through CMAKE_<LANG>_FLAGS so the FetchContent'd
+      # OpenJPH objects embedded in libopenjph_c are instrumented too.
+      - name: Configure with AddressSanitizer
+        run: >
+          cmake -S native -B build-asan
+          -DCMAKE_BUILD_TYPE=Debug
+          -DOPENJPH_C_BUILD_TESTS=ON
+          -DCMAKE_C_FLAGS="-fsanitize=address -fno-omit-frame-pointer -g"
+          -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer -g"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address"
+          -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address"
+      - name: Build
+        run: cmake --build build-asan -j
+      - name: Run leak tests (LeakSanitizer)
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+        run: ctest --test-dir build-asan --output-on-failure
+
+  # ------------------------------
+  native-done:
+    needs: [native-linux-build, native-macos-build, native-windows-build, native-sanitizer]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Native part is done"
