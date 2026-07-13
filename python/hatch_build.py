@@ -64,7 +64,9 @@ def download_native_lib(release: str, plat: str, dest: Path) -> Path:
     archive.unlink()
     libs = [p for p in dest.iterdir() if p.suffix in _LIB_SUFFIXES]
     if len(libs) != 1:
-        raise RuntimeError(f"expected exactly one shared library from {url}, found {libs}")
+        raise RuntimeError(
+            f"expected exactly one shared library from {url}, found {libs}"
+        )
     return libs[0]
 
 
