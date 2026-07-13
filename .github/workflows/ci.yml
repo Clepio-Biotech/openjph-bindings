@@ -93,29 +93,15 @@ jobs:
   # ------------------------------ PYTHON ------------------------------
 
   # ------------------------------
-  python-tests:
-    name: 'Python tests'
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: python
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - name: Install cmake
-        run: sudo apt-get install -y cmake
-      - name: Install
-        env:
-          NATIVE_PATH: ${{ github.workspace }}/native
-        run: python -m pip install ".[test,zarr]"
-      - name: Test
-        run: pytest tests
+  # Split out per almarklein's per-language CI suggestion (PR #19 discussion
+  # r3565153820), same reusable-workflow pattern as native.yml/julia-*.yml.
+  python:
+    name: Python
+    uses: ./.github/workflows/python.yml
 
   # ------------------------------
   python-done:
-    needs: [python-tests]
+    needs: [python]
     runs-on: ubuntu-latest
     steps:
       - run: echo "Python part is done"
