@@ -1,0 +1,20 @@
+name: Julia OpenJPH.jl
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: 'Julia tests: OpenJPH.jl'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+      # No local build override of any kind — this always resolves
+      # libopenjph_c from the Pkg Artifact pinned in Artifacts.toml, the
+      # same path every consumer of OpenJPH.jl takes.
+      - name: Test OpenJPH
+        run: julia --project=julia/OpenJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.test()'
