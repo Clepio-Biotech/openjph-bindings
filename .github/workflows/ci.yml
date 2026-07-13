@@ -6,7 +6,8 @@ on:
     branches:
       - main
     tags:
-      - 'v*.*'
+      # Only the C/native lineage's tags trigger this build/publish pipeline.
+      - 'C-v*'
   pull_request:
     branches:
       - main
@@ -36,7 +37,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Extract version
         # Exact same line is used in publish to check the tag
-        run: echo "CPP_VERSION=v$(sed -n 's/.*version\[\] = "\(.*\)".*/\1/p' native/src/openjph_c.cpp)" >> "$GITHUB_ENV"
+        run: echo "CPP_VERSION=C-v$(sed -n 's/.*version\[\] = "\(.*\)".*/\1/p' native/src/openjph_c.cpp)" >> "$GITHUB_ENV"
       - name: Versions agree across the monorepo
         run: |
           echo "current env.CPP_VERSION: ${{ env.CPP_VERSION }}"
@@ -64,8 +65,8 @@ jobs:
         # _backend.py (a scikit-build-core editable install leaves it in a build
         # dir where the loader can't find it).
         run: python -m pip install "./python[zarr]"
-      - name: Build Julia packages
-        run: julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.build("OpenJPH")'
+      - name: Instantiate Julia packages
+        run: julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.instantiate()'
       - name: Cross-language Zarr interop
         run: bash tests/interop/run.sh
 
@@ -95,7 +96,9 @@ jobs:
             image: manylinux_2_28_aarch64
     env:
       IMAGE: ${{ matrix.image }}
-      ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.zip"
+      # Julia's Pkg.Artifacts only unpacks tarballs, not zips — this tarball
+      # is what julia/OpenJPH.jl/Artifacts.toml ends up pointing to.
+      ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.tar.gz"
     steps:
       - uses: actions/checkout@v7
       - name: Build
@@ -105,12 +108,11 @@ jobs:
             cp -r /tmp/src/. . && \
             rm -rf ./build && \
             export USER=root && \
-            dnf install -y zip && \
             cmake -B build . -DCMAKE_BUILD_TYPE=Release && \
             cmake --build build  && \
             mkdir dist && cp ./build/*.so ./dist/ && cp ./include/*.h ./dist/ && \
             cd dist && \
-            zip -r ../${{ env.ARCHIVE_NAME }} *")
+            tar czf ../${{ env.ARCHIVE_NAME }} *")
           docker start -ai $CID
           mkdir -p dist
           docker cp $CID:/tmp/work/dist/. dist/.
@@ -136,7 +138,7 @@ jobs:
           - name:  windows-aarch64
             os: windows-11-arm
     env:
-      ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.zip"
+      ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.tar.gz"
     steps:
       - uses: actions/checkout@v7
       - name: Build
@@ -146,7 +148,7 @@ jobs:
           cmake --build build --config Release
           mkdir dist && cp ./build/Release/*.dll ./dist/ && cp ./include/*.h ./dist/
           cd dist
-          7z a -tzip ../${{ env.ARCHIVE_NAME }} *;
+          tar czf ../${{ env.ARCHIVE_NAME }} *
         shell: bash
       - name: Upload
         uses: actions/upload-artifact@v7
@@ -170,7 +172,7 @@ jobs:
     env:
       # Need aligned_malloc, which is only available from 10.15+
       MACOSX_DEPLOYMENT_TARGET: "10.15"
-      ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.zip"
+      ARCHIVE_NAME: "openjph_c-${{ matrix.name }}.tar.gz"
     steps:
       - uses: actions/checkout@v7
       - name: Build
@@ -180,7 +182,7 @@ jobs:
           cmake --build build
           mkdir dist && cp ./build/*.dylib ./dist/ && cp ./include/*.h ./dist/
           cd dist
-          zip -r ../${{ env.ARCHIVE_NAME }} *
+          tar czf ../${{ env.ARCHIVE_NAME }} *
       - name: Upload
         uses: actions/upload-artifact@v7
         with:
@@ -264,15 +266,13 @@ jobs:
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1'
-      - name: Install cmake
-        run: sudo apt-get install -y cmake
-      # No NATIVE_PATH on purpose: this exercises build.jl's in-monorepo
-      # sibling-detection of native/ — the path a fresh monorepo build actually
-      # uses, and the one whose breakage previously shipped unnoticed.
+      # No local build override of any kind — this always resolves
+      # libopenjph_c from the Pkg Artifact pinned in Artifacts.toml, the
+      # same path every consumer of OpenJPH.jl takes.
       - name: Test OpenJPH
-        run: julia --project=julia/OpenJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.build("OpenJPH"); Pkg.test()'
+        run: julia --project=julia/OpenJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.test()'
       - name: Test ZarrCompressorJPH
-        run: julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.build("OpenJPH"); Pkg.test()'
+        run: julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.test()'
 
   # ------------------------------
   julia-done:
@@ -289,7 +289,7 @@ jobs:
   # ------------------------------
   publish-github:
     name: Publish libs to Github
-    if: success() && contains(github.ref, 'tags/v')
+    if: success() && startsWith(github.ref, 'refs/tags/C-v')
     needs: [native-done, python-done, julia-done, generic-done]
     runs-on: ubuntu-latest
     permissions:
@@ -299,7 +299,7 @@ jobs:
       - name: set version (which gets used as release name)
         run: |
           echo "TAG_VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
-          echo "CPP_VERSION=v$(sed -n 's/.*version\[\] = "\(.*\)".*/\1/p' native/src/openjph_c.cpp)" >> "$GITHUB_ENV"
+          echo "CPP_VERSION=C-v$(sed -n 's/.*version\[\] = "\(.*\)".*/\1/p' native/src/openjph_c.cpp)" >> "$GITHUB_ENV"
           if [ "$CPP_VERSION" != "$TAG_VERSION" ]; then
             echo "::error::Tag version ($TAG_VERSION) does not match source version ($CPP_VERSION)"
             exit 1
@@ -322,7 +322,7 @@ jobs:
           tag_name: ${{ env.TAG_VERSION }}
           name: ${{ env.TAG_VERSION }}
           files: |
-            dist/**/*.zip
+            dist/**/*.tar.gz
             dist/commit-sha
           body: |
             Precompiled binary modules.

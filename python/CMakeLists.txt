@@ -32,8 +32,10 @@ if(NOT TARGET openjph_c)
     add_subdirectory("${NATIVE_PATH}" native_build)
   else()
     # P2: download openjph-bindings from GitHub and use its native/ subdirectory.
+    # _BINDINGS_TAG tracks the C lineage's own release tag (see
+    # tests/check_versions.sh), not Python's own version.
     include(FetchContent)
-    set(_BINDINGS_TAG "v0.1.0")
+    set(_BINDINGS_TAG "C-v0.29.0.0")
     message(STATUS "pyopenjph: NATIVE_PATH not set — downloading openjph-bindings ${_BINDINGS_TAG}")
     FetchContent_Declare(openjph_bindings
       GIT_REPOSITORY https://github.com/Clepio-Biotech/openjph-bindings

@@ -21,8 +21,11 @@
 
 namespace {
 
-// The reference version for the whole project
-static const char version[] = "0.1.0";
+// C wrapper version: tracks the vendored OpenJPH version (see
+// native/CMakeLists.txt's FetchContent_Declare GIT_TAG) plus a trailing
+// wrapper-revision digit. Independent of Python's/Julia's own versions — see
+// tests/check_versions.sh.
+static const char version[] = "0.29.0.0";
 
 /* OpenJPH's default error handler prints the detailed diagnostic (message,
    file, line) to stderr and then throws a generic

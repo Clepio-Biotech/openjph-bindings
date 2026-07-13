@@ -46,11 +46,16 @@ decoded = openjph_decode(encoded)
 ## Development
 
 ```bash
-# In the monorepo the sibling native/ is auto-detected (no NATIVE_PATH needed); a
-# local build overrides the artifact so you can test changes to the C layer.
-julia --project=OpenJPH.jl -e 'import Pkg; Pkg.build("OpenJPH")'
+# Always resolves libopenjph_c from the published Pkg Artifact — there is no
+# local build override or in-monorepo native/ detection in the package itself.
+julia --project=OpenJPH.jl -e 'import Pkg; Pkg.instantiate()'
 
 # Pkg.test with no argument tests the active project's package.
 julia --project=OpenJPH.jl           -e 'import Pkg; Pkg.test()'
 julia --project=ZarrCompressorJPH.jl -e 'import Pkg; Pkg.test()'
 ```
+
+To test an in-progress change to the C layer against Julia, build it locally with
+`../../tools/build_native_local.jl` and register the result in your own
+`~/.julia/artifacts/Overrides.toml` — see `docs/RELEASING.md`. This needs no
+change to `OpenJPH.jl` itself.

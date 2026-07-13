@@ -3,20 +3,20 @@ module OpenJPH
 using Libdl
 using Artifacts, LazyArtifacts
 
-const _dlext     = Sys.iswindows() ? "dll" : Sys.isapple() ? "dylib" : "so"
-const _deps_file = joinpath(@__DIR__, "..", "deps", "deps.jl")
+const _dlext = Sys.iswindows() ? "dll" : Sys.isapple() ? "dylib" : "so"
 
-# Resolve the native library. A local build (produced by deps/build.jl from
-# NATIVE_PATH or the in-monorepo native/ source) takes precedence so the C layer
-# can be developed in place; otherwise Pkg supplies the right per-platform binary
-# from Artifacts.toml. deps.jl records only the basename, resolved relative to
-# deps/ at load time so a local override stays relocatable.
-const libopenjph_c = if isfile(_deps_file)
-    include(_deps_file)   # defines const libopenjph_c_name
-    joinpath(@__DIR__, "..", "deps", libopenjph_c_name)
-else
-    joinpath(artifact"libopenjph_c", "libopenjph_c.$(_dlext)")
-end
+# The native library always comes from the Pkg Artifact pinned in
+# Artifacts.toml — no local-build override, no in-monorepo native/
+# detection. For local development against an in-progress native build,
+# use Julia's own Overrides.toml mechanism instead (an entry in
+# ~/.julia/artifacts/Overrides.toml keyed by this package's UUID and the
+# "libopenjph_c" artifact name, pointing at a local file — see
+# tools/build_native_local.jl and docs/RELEASING.md). That needs no code
+# here at all, and — unlike the old deps.jl-existence check this
+# replaces — Artifacts.toml is itself registered as a compile dependency
+# by the `artifact"..."` macro, so a real package update correctly
+# invalidates and recompiles.
+const libopenjph_c = joinpath(artifact"libopenjph_c", "libopenjph_c.$(_dlext)")
 
 # OpenJPH is statically embedded in libopenjph_c — no separate library to load.
 Libdl.dlopen(libopenjph_c, Libdl.RTLD_GLOBAL | Libdl.RTLD_LAZY)
