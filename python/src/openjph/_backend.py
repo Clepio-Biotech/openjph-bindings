@@ -277,3 +277,35 @@ def decode(data: bytes | np.ndarray, *, out: np.ndarray | None = None) -> np.nda
         raise RuntimeError(f"openjph_decode: {err_buf.value.decode(errors='replace')}")
 
     return out
+
+
+# ---- self-test ----
+
+
+# ctypes resolves openjph_decode by symbol name alone and does not verify the
+# loaded library's actual signature — the same name exists under both the old
+# (C-allocated) and new (caller-allocated) decode ABI. A stale _BINDINGS_TAG
+# (or a mismatched local native/ build) would otherwise go undetected until it
+# silently corrupts memory on real data. A tiny encode/decode round-trip at
+# import time turns that into an immediate, clear error instead.
+def _self_test() -> None:
+    probe = np.array([[0, 1], [2, 3]], dtype=np.uint8)
+    try:
+        result = decode(encode(probe))
+    except Exception as e:
+        raise ImportError(
+            "openjph._backend: native library self-test failed — the loaded "
+            "libopenjph_c does not appear to match this package's expected "
+            "ABI (e.g. a stale _BINDINGS_TAG in python/CMakeLists.txt, or a "
+            "mismatched local native/ build)."
+        ) from e
+    if not np.array_equal(result, probe):
+        raise ImportError(
+            "openjph._backend: native library self-test produced incorrect "
+            "output — the loaded libopenjph_c does not appear to match this "
+            "package's expected ABI (e.g. a stale _BINDINGS_TAG in "
+            "python/CMakeLists.txt, or a mismatched local native/ build)."
+        )
+
+
+_self_test()
