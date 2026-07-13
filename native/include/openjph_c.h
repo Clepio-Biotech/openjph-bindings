@@ -2,6 +2,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* Return codes shared by openjph_get_info and openjph_decode. */
+#define OPENJPH_OK 0
+#define OPENJPH_ERR (-1)
+
 /* Input array descriptor for openjph_encode.
    bit_depth and is_signed match OpenJPH's native (bit_depth, is_signed) pair
    from SIZ marker parameters — no intermediate dtype enum. */
@@ -50,20 +54,32 @@ OPENJPH_API int openjph_encode(const openjph_array_t *img,
                                uint8_t **out, size_t *out_len, char *err_buf,
                                size_t err_buf_len);
 
-/* Decode an HTJ2K codestream.
-   Shape and element type are read from the codestream SIZ marker — no target
-   dtype needed. On success returns 0, sets
-   out, out_len, out_ndim, out_dims, out_bit_depth, out_is_signed. Caller must
-   free *out with openjph_free(). On failure returns -1, writes a
-   null-terminated message into err_buf. err_buf must be non-NULL and
-   err_buf_len > 0. */
+/* Read shape and element type from the codestream SIZ marker without
+   decoding, for sizing the out_buf passed to openjph_decode.
+   Sets *out_ndim, out_dims, *out_bit_depth, *out_is_signed. A 1-component
+   codestream reports ndim == 2: the SIZ marker cannot express a leading
+   singleton axis, so (1,H,W) and (H,W) encode identically — callers that
+   know the intended shape are the source of truth.
+   Returns OPENJPH_OK, or OPENJPH_ERR with a message in err_buf. */
+OPENJPH_API int openjph_get_info(const uint8_t *codestream,
+                                 size_t codestream_len, size_t *out_ndim,
+                                 size_t out_dims[3], uint32_t *out_bit_depth,
+                                 int32_t *out_is_signed, char *err_buf,
+                                 size_t err_buf_len);
+
+/* Decode an HTJ2K codestream into the caller-allocated out_buf.
+   out_buf_len must EXACTLY equal components * height * width *
+   bytes_per_sample as reported by openjph_get_info, where bytes_per_sample
+   is 1 for bit_depth <= 8, 2 for <= 16, and 4 otherwise; any mismatch is an
+   error (the expected size is reported in err_buf). Pixels are written
+   row-major as (H,W) or (C,H,W).
+   Returns OPENJPH_OK, or OPENJPH_ERR with a message in err_buf. out_buf
+   contents are unspecified on failure. */
 OPENJPH_API int openjph_decode(const uint8_t *codestream, size_t codestream_len,
-                               uint8_t **out, size_t *out_len, size_t *out_ndim,
-                               size_t out_dims[3], uint32_t *out_bit_depth,
-                               int32_t *out_is_signed, char *err_buf,
+                               void *out_buf, size_t out_buf_len, char *err_buf,
                                size_t err_buf_len);
 
-/* Free a buffer returned by openjph_encode or openjph_decode. */
+/* Free a buffer returned by openjph_encode. */
 OPENJPH_API void openjph_free(void *ptr);
 
 #ifdef __cplusplus
