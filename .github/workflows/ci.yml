@@ -124,25 +124,21 @@ jobs:
   # ------------------------------ JULIA ------------------------------
 
   # ------------------------------
-  julia-tests:
-    name: 'Julia tests'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: julia-actions/setup-julia@v2
-        with:
-          version: '1'
-      # No local build override of any kind — this always resolves
-      # libopenjph_c from the Pkg Artifact pinned in Artifacts.toml, the
-      # same path every consumer of OpenJPH.jl takes.
-      - name: Test OpenJPH
-        run: julia --project=julia/OpenJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.test()'
-      - name: Test ZarrCompressorJPH
-        run: julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.instantiate(); Pkg.test()'
+  # Each package is its own independent release lineage (OpenJPH.jl-v*,
+  # ZarrCompressorJPH.jl-v*), so each gets its own reusable workflow file,
+  # per almarklein's per-language CI split suggestion (PR #19 discussion
+  # r3565153820) — same pattern as native.yml from step 2a.
+  julia-openjph:
+    name: Julia OpenJPH.jl
+    uses: ./.github/workflows/julia-openjph.yml
+
+  julia-zarrcompressorjph:
+    name: Julia ZarrCompressorJPH.jl
+    uses: ./.github/workflows/julia-zarrcompressorjph.yml
 
   # ------------------------------
   julia-done:
-    needs: [julia-tests]
+    needs: [julia-openjph, julia-zarrcompressorjph]
     runs-on: ubuntu-latest
     steps:
       - run: echo "Julia part is done"
