@@ -70,6 +70,15 @@ def download_native_lib(release: str, plat: str, dest: Path) -> Path:
     return libs[0]
 
 
+def to_h_file(p: str) -> str:
+    path = Path(p)
+    fname = path.name
+    fname = fname.rpartition(".")[0] + ".h"
+    if fname.startswith("lib"):
+        fname = fname[3:]
+    return str(path.parent / fname)
+
+
 class NativeLibBuildHook(BuildHookInterface):
     def initialize(self, version: str, build_data: dict) -> None:
         root = Path(self.root)
@@ -81,3 +90,6 @@ class NativeLibBuildHook(BuildHookInterface):
         build_data["pure_python"] = False
         build_data["tag"] = f"py3-none-{PLATFORMS[plat]}"
         build_data["force_include"][str(lib)] = f"openjph/{lib.name}"
+        build_data["force_include"][to_h_file(str(lib))] = to_h_file(
+            f"openjph/{lib.name}"
+        )
