@@ -40,19 +40,24 @@ def find_lib() -> str:
     pkg_dir = Path(__file__).parent
 
     lib_paths = []
-    lib_paths.append(pkg_dir / lib_name)
+    lib_paths.append((pkg_dir / lib_name, ""))
     if (pkg_dir.parents[2] / ".git").is_dir():
         # Local dev env
-        lib_paths.append(
+        p1 = (
             pkg_dir.parents[1]
             / "build"
             / f"C-v{NATIVE_VERSION}"
             / f"{os_name}-{arch}"
             / lib_name
         )
+        p2 = pkg_dir.parents[2] / "native" / "build" / lib_name
+        lib_paths.append((p1, f"Using openjph from dev install: {p1}"))
+        lib_paths.append((p2, f"!! Using openjph from local build: {p2}"))
 
-    for lib_path in lib_paths:
+    for lib_path, msg in lib_paths:
         if lib_path.is_file():
+            if msg:
+                print(msg)
             return lib_path
     else:
         raise RuntimeError(f"Could not find lib path from {lib_paths}")
