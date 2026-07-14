@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import os
 import sys
+import platform
 from pathlib import Path
 
 import numpy as np
@@ -14,32 +15,53 @@ from openjph._constants import PROGRESSION_ORDERS
 NATIVE_VERSION = "0.29.0.1"
 
 
-# Resolve platform-specific library filename.
-_platform = sys.platform
-if _platform == "win32":
-    _lib_name = "openjph_c.dll"
-elif _platform == "darwin":
-    _lib_name = "libopenjph_c.dylib"
-else:
-    _lib_name = "libopenjph_c.so"
+def find_lib() -> str:
+    # Local-dev override (the wgpu-py WGPU_LIB_PATH pattern): point at a custom
+    # build of libopenjph_c without reinstalling the package.
+    lib_override = os.environ.get("PYOPENJPH_LIB_PATH")
+    if lib_override:
+        return lib_override
 
-_pkg_dir = Path(__file__).parent
-_lib_path = _pkg_dir / _lib_name
+    os_name = {"linux": "linux", "darwin": "macos", "win32": "windows"}[sys.platform]
+
+    arch = {
+        "x86_64": "x86_64",
+        "amd64": "x86_64",
+        "aarch64": "aarch64",
+        "arm64": "aarch64",
+    }[platform.machine().lower()]
+
+    lib_name = {
+        "windows": "openjph_c.dll",
+        "macos": "libopenjph_c.dylib",
+        "linux": "libopenjph_c.so",
+    }[os_name]
+
+    pkg_dir = Path(__file__).parent
+
+    lib_paths = []
+    lib_paths.append(pkg_dir / lib_name)
+    if (pkg_dir.parents[2] / ".git").is_dir():
+        # Local dev env
+        lib_paths.append(pkg_dir.parents[1] / "build" /  f"C-v{NATIVE_VERSION}"/  f"{os_name}-{arch}" / lib_name)
+
+    for lib_path in lib_paths:
+        if lib_path.is_file():
+            return lib_path
+    else:
+        raise RuntimeError(f"Could not find lib path from {lib_paths}")
+
+
+lib_path = find_lib()
 
 # On Windows, ctypes searches PATH but not the package directory for transitive DLLs.
-if _platform == "win32" and hasattr(os, "add_dll_directory"):
-    os.add_dll_directory(str(_pkg_dir))
-
-# Local-dev override (the wgpu-py WGPU_LIB_PATH pattern): point at a custom
-# build of libopenjph_c without reinstalling the package.
-_lib_override = os.environ.get("PYOPENJPH_LIB_PATH")
+if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
+    os.add_dll_directory(str(lib_path.parent))
 
 try:
-    _lib = ctypes.CDLL(
-        _lib_override or (str(_lib_path) if _lib_path.exists() else _lib_name)
-    )
+    _lib = ctypes.CDLL(lib_path)
 except OSError as e:
-    raise ImportError(f"Could not load {_lib_override or _lib_name}: {e}") from e
+    raise ImportError(f"Could not load {lib_path}: {e}") from e
 
 # ---- C struct mirrors ----
 
