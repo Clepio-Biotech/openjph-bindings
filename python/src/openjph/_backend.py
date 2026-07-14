@@ -43,7 +43,13 @@ def find_lib() -> str:
     lib_paths.append(pkg_dir / lib_name)
     if (pkg_dir.parents[2] / ".git").is_dir():
         # Local dev env
-        lib_paths.append(pkg_dir.parents[1] / "build" /  f"C-v{NATIVE_VERSION}"/  f"{os_name}-{arch}" / lib_name)
+        lib_paths.append(
+            pkg_dir.parents[1]
+            / "build"
+            / f"C-v{NATIVE_VERSION}"
+            / f"{os_name}-{arch}"
+            / lib_name
+        )
 
     for lib_path in lib_paths:
         if lib_path.is_file():
