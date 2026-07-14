@@ -124,7 +124,6 @@ jobs:
       url: https://pypi.org/p/pyopenjph
     permissions:
       id-token: write
-      contents: write
     steps:
       - uses: actions/checkout@v7
       - name: Tag matches package version
