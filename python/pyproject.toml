@@ -9,34 +9,17 @@ description = "Python bindings for OpenJPH HTJ2K encode/decode"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "BSD-2-Clause" }
-authors = [
-    { name = "Alessandro A. Grande" },
-]
-dependencies = [
-    "numpy>=2,<3",
-]
+authors = [{ name = "Alessandro A. Grande" }]
+dependencies = ["numpy>=2,<3"]
 
 [project.optional-dependencies]
-zarr = [
-    "zarr>=3.1.3",
-]
-test = [
-    "pytest>=8",
-    "zarr>=3.1.3",
-]
-dev = [
-    "pre-commit>=4.3",
-]
+zarr = ["zarr>=3.1.3"]
+test = ["pytest>=8", "zarr>=3.1.3"]
+dev = ["pre-commit>=4.3"]
 
 [project.entry-points."zarr.codecs"]
 openjph_htj2k = "openjph.zarr:OpenJPHCodec"
 
-# The C-v* release whose prebuilt libopenjph_c ships inside wheels (and inside
-# every source install — hatch_build.py downloads it at build time; nothing is
-# ever compiled). Bumping it is a deliberate, reviewed commit; a Python-v* tag
-# then freezes it into the published wheels (see .github/workflows/wheels.yml).
-[tool.pyopenjph]
-native-release = "C-v0.29.0.1"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/openjph"]

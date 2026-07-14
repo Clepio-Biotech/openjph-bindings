@@ -9,6 +9,11 @@ import numpy as np
 
 from openjph._constants import PROGRESSION_ORDERS
 
+
+# The release of the native lib to use. Tagged in the repo as e.g. 'C-v0.29.0.1'
+NATIVE_VERSION = "0.29.0.1"
+
+
 # Resolve platform-specific library filename.
 _platform = sys.platform
 if _platform == "win32":

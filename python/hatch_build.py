@@ -1,7 +1,6 @@
 # Hatchling build hook: download the prebuilt libopenjph_c from a published
 # C-v* GitHub release and package it into the wheel (the wgpu-py model — no
-# compilation, ever). The release is pinned in pyproject.toml
-# [tool.pyopenjph] native-release; PYOPENJPH_NATIVE_RELEASE overrides it, and
+# compilation, ever). The release is pinned in _backend.py; PYOPENJPH_NATIVE_RELEASE overrides it, and
 # PYOPENJPH_BUILD_PLATFORM selects a non-host target for cross-platform
 # builds (see tools/build_wheels.py).
 
@@ -11,7 +10,6 @@ import os
 import platform
 import sys
 import tarfile
-import tomllib
 import urllib.request
 from pathlib import Path
 
@@ -49,8 +47,17 @@ def host_platform() -> str:
 
 
 def pinned_release(project_root: Path) -> str:
-    with open(project_root / "pyproject.toml", "rb") as f:
-        return tomllib.load(f)["tool"]["pyopenjph"]["native-release"]
+    with open(
+        project_root / "src" / "openjph" / "_backend.py", "rt", encoding="utf-8"
+    ) as f:
+        for line in f.readlines():
+            if line.startswith("NATIVE_VERSION ="):
+                break
+        else:
+            line = ""
+            RuntimeError("Could not detect NATIVE_VERSION")
+        native_version = line.partition("=")[2].strip().strip("\"'")
+        return "C-v" + native_version
 
 
 def download_native_lib(release: str, plat: str, dest: Path) -> Path:

@@ -8,9 +8,8 @@ own release tag (see discussion #14) — a change to one no longer forces a rele
   we bump on wrapper-only changes. This is the only lineage with an automated release pipeline
   today.
 - **Python** (`python/`) — its own version in `pyproject.toml`, tag `Python-vX.Y.Z`, released
-  through `.github/workflows/wheels.yml` (see "Cutting a Python release" below). The wheels ship
-  the prebuilt `libopenjph_c` from the `C-v*` release pinned in `pyproject.toml`
-  `[tool.pyopenjph]` — nothing is compiled at wheel-build or install time.
+  through `.github/workflows/python.yml` (see "Cutting a Python release" below). The wheels ship
+  the prebuilt `libopenjph_c` — nothing is compiled at wheel-build or install time.
 - **Julia** — `OpenJPH.jl` and `ZarrCompressorJPH.jl` each version and tag independently
   (`OpenJPH.jl-vX.Y.Z`, `ZarrCompressorJPH.jl-vX.Y.Z`), not a shared "Julia" tag: they're two
   packages with independent `[compat]`-declared compatibility, not one lineage. Both are plain git
@@ -64,16 +63,16 @@ install) downloads the prebuilt `libopenjph_c` from the `C-v*` release pinned in
 `python/hatch_build.py`, a hatchling build hook). Cutting a `Python-v*` release is therefore the
 one deliberate moment Python switches C binary:
 
-1. If the release should ship a newer C release, bump the `[tool.pyopenjph] native-release` pin
+1. If the release should ship a newer C release, bump the `NATIVE_VERSION` in `_backend.py`
    (a normal, reviewed commit — CI's `python-tests` immediately runs against the new binary).
 2. Bump `[project] version` in `python/pyproject.toml`.
-3. Tag the commit `Python-vX.Y.Z` and push it. `wheels.yml` then:
+3. Tag the commit `Python-vX.Y.Z` and push it. `python.yml` then:
    - builds all 6 platform wheels on one Linux runner (`tools/build_wheels.py` — each wheel is
      `py3-none-<platform>`, containing that platform's binary from the pinned release),
    - installs and tests the matching wheel on all 6 platforms' real runners,
-   - verifies the tag matches `pyproject.toml`'s version and publishes wheels + sdist to PyPI.
+   - verifies the tag matches the version and publishes wheels + sdist to PyPI.
 
-`wheels.yml` can also be run manually (`workflow_dispatch`), optionally overriding which `C-v*`
+`python.yml` can also be run manually (`workflow_dispatch`), optionally overriding which `C-v*`
 release to package — useful for a dry run before committing a pin bump.
 
 ## Testing a local native change against Python
