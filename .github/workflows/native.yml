@@ -168,8 +168,9 @@ jobs:
       - uses: actions/checkout@v7
       - name: set version (which gets used as release name)
         run: |
-          echo "TAG_VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
-          echo "CPP_VERSION=C-v$(sed -n 's/.*version\[\] = "\(.*\)".*/\1/p' native/src/openjph_c.cpp)" >> "$GITHUB_ENV"
+          TAG_VERSION="${GITHUB_REF/refs\/tags\//}"
+          CPP_VERSION="C-v$(sed -n 's/.*version\[\] = "\(.*\)".*/\1/p' native/src/openjph_c.cpp)"
+          echo "TAG_VERSION=$TAG_VERSION" >> "$GITHUB_ENV"
           if [ "$CPP_VERSION" != "$TAG_VERSION" ]; then
             echo "::error::Tag version ($TAG_VERSION) does not match source version ($CPP_VERSION)"
             exit 1
