@@ -27,7 +27,7 @@ each other — `ZarrCompressorJPH.jl` declares which `OpenJPH` versions it suppo
 
 1. Bump `native/src/openjph_c.cpp`'s `version` string if needed (vendored-OpenJPH-version +
    wrapper-revision digit) and confirm `bash tests/check_versions.sh` passes.
-2. Tag the commit `C-vX.Y.Z.W` and push it. `.github/workflows/ci.yml`'s tag trigger is scoped to
+2. Tag the commit `C-vX.Y.Z.W` and push it. `.github/workflows/native.yml`'s tag trigger is scoped to
    `C-v*` specifically, so this is the only tag shape that kicks off the native build/publish
    pipeline (a Julia or future Python package tag push does nothing here).
 3. `native-linux-build`/`native-windows-build`/`native-macos-build` build `libopenjph_c` for all 6
@@ -64,7 +64,9 @@ install) downloads the prebuilt `libopenjph_c` from the `C-v*` release pinned in
 one deliberate moment Python switches C binary:
 
 1. If the release should ship a newer C release, bump the `NATIVE_VERSION` in `_backend.py`
-   (a normal, reviewed commit — CI's `python-tests` immediately runs against the new binary).
+   and run `python tools/download_native.py --update-checksums` to record the new release's
+   asset sha256s in `python/hatch_build.py` (a normal, reviewed commit — CI's `python-tests`
+   immediately runs against the new binary).
 2. Bump `[project] version` in `python/pyproject.toml`.
 3. Tag the commit `Python-vX.Y.Z` and push it. `python.yml` then:
    - builds all 6 platform wheels on one Linux runner (`tools/build_wheels.py` — each wheel is
