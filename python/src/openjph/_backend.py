@@ -15,12 +15,12 @@ from openjph._constants import PROGRESSION_ORDERS
 NATIVE_VERSION = "0.29.0.1"
 
 
-def find_lib() -> str:
+def find_lib() -> Path:
     # Local-dev override (the wgpu-py WGPU_LIB_PATH pattern): point at a custom
     # build of libopenjph_c without reinstalling the package.
     lib_override = os.environ.get("PYOPENJPH_LIB_PATH")
     if lib_override:
-        return lib_override
+        return Path(lib_override)
 
     os_name = {"linux": "linux", "darwin": "macos", "win32": "windows"}[sys.platform]
 

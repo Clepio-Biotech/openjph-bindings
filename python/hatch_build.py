@@ -55,7 +55,7 @@ def pinned_release(project_root: Path) -> str:
                 break
         else:
             line = ""
-            RuntimeError("Could not detect NATIVE_VERSION")
+            raise RuntimeError("Could not detect NATIVE_VERSION")
         native_version = line.partition("=")[2].strip().strip("\"'")
         return "C-v" + native_version
 
