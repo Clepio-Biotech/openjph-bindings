@@ -1,23 +1,23 @@
-# pyopenjph
+# jp15
 
 Python bindings for OpenJPH HTJ2K encode/decode, with an optional Zarr v3 codec.
 
 ## Installation
 
 ```bash
-pip install "pyopenjph[zarr]"   # with Zarr codec support
-pip install pyopenjph           # encode/decode only
+pip install "jp15[zarr]"   # with Zarr codec support
+pip install jp15           # encode/decode only
 ```
 
 ## Basic usage
 
 ```python
-import openjph
+import jp15
 import numpy as np
 
 data = np.random.randint(0, 60000, (64, 128), dtype=np.uint16)
 
-encoded = openjph.encode(
+encoded = jp15.encode(
     data,
     irreversible=False,
     qstep=None,
@@ -27,7 +27,7 @@ encoded = openjph.encode(
     color_transform=False,
     planar=True,
 )
-decoded = openjph.decode(encoded)
+decoded = jp15.decode(encoded)
 
 np.testing.assert_array_equal(decoded, data)
 ```
@@ -44,7 +44,7 @@ caller's side.
 `OpenJPHCodec` is a Zarr v3 array-to-bytes codec passed in the array's `codecs` pipeline.
 
 ```python
-from openjph.zarr import OpenJPHCodec
+from jp15.zarr import OpenJPHCodec
 import numpy as np
 import zarr
 

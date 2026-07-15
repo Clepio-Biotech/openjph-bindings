@@ -10,7 +10,7 @@ import numpy as np
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.common import JSON, parse_named_configuration
 
-from openjph._constants import PROGRESSION_ORDERS
+from jp15._constants import PROGRESSION_ORDERS
 
 if TYPE_CHECKING:
     from typing import Self
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 Layout = Literal["yx", "zyx", "cyx", "yxc"]
 ProgressionOrder = Literal["LRCP", "RLCP", "RPCL", "PCRL", "CPRL"]
 _SUPPORTED_PROGRESSIONS = set(PROGRESSION_ORDERS)
-_BACKEND_MODULE_NAME = "openjph._backend"
+_BACKEND_MODULE_NAME = "jp15._backend"
 
 
 class OpenJPHCodecUnavailableError(RuntimeError):
@@ -69,7 +69,7 @@ def _get_backend() -> _OpenJPHBackend:
             return _backend_cache
 
     raise OpenJPHCodecUnavailableError(
-        "OpenJPHCodec requires the native openjph._backend module."
+        "OpenJPHCodec requires the native jp15._backend module."
     )
 
 

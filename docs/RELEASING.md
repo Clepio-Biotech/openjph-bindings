@@ -59,7 +59,7 @@ removed; see git history if you need the details).
 
 Python follows the wgpu-py model: the package never compiles C — every build (wheel or source
 install) downloads the prebuilt `libopenjph_c` from the `C-v*` release pinned in
-`python/pyproject.toml` `[tool.pyopenjph] native-release` (the download lives in
+`_backend.py` (the download lives in
 `python/hatch_build.py`, a hatchling build hook). Cutting a `Python-v*` release is therefore the
 one deliberate moment Python switches C binary:
 
@@ -84,7 +84,7 @@ pattern) — no reinstall needed:
 
 ```bash
 cmake -B build native/ -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
-PYOPENJPH_LIB_PATH=$PWD/build/libopenjph_c.so pytest python/tests
+JP15_LIB_PATH=$PWD/build/libopenjph_c.so pytest python/tests
 ```
 
 To try a *different published* C release instead, download it first:
@@ -93,7 +93,7 @@ To try a *different published* C release instead, download it first:
 python tools/download_native.py --release C-vX.Y.Z.W
 ```
 
-and point `PYOPENJPH_LIB_PATH` at the printed library. As with Julia below, this manual step is
+and point `JP15_LIB_PATH` at the printed library. As with Julia below, this manual step is
 how an in-progress native change is verified against Python before cutting the next `C-v*` tag —
 CI always tests the wrapper against its pinned, published release.
 

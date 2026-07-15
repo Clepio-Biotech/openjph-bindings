@@ -5,7 +5,7 @@
 #   1. C's own version (native/src/openjph_c.cpp) tracks the OpenJPH version
 #      it actually vendors (native/CMakeLists.txt's FetchContent GIT_TAG),
 #      plus a trailing wrapper-revision digit.
-#   2. Python's C-release pin (python/pyproject.toml [tool.pyopenjph]) and the
+#   2. Python's C-release pin (_backends.py) and the
 #      Julia Artifacts.toml are deliberately NOT checked here: both point at
 #      published, immutable C-v* releases and are exercised at build/release
 #      time, so there is no always-live invariant left to drift.

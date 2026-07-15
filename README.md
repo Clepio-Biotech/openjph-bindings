@@ -7,7 +7,7 @@ Language bindings for [OpenJPH](https://github.com/aous72/OpenJPH) — a high-pe
 ```
 openjph-bindings/
 ├── native/     # C ABI shared library (libopenjph_c.so) — the single source of truth
-├── python/     # pyopenjph — Python bindings and optional Zarr v3 codec
+├── python/     # jp15 — Python bindings and optional Zarr v3 codec
 └── julia/      # OpenJPH.jl and ZarrCompressorJPH.jl — Julia bindings and Zarr codec
 ```
 
@@ -23,14 +23,14 @@ source is only needed when developing the C layer itself.
 | | Julia | Python |
 |---|---|---|
 | **Prebuilt (default)** | Pkg downloads the right per-platform binary via `OpenJPH.jl/Artifacts.toml` from a `C-v*` GitHub Release — no C++ toolchain needed | every install (wheel or source) contains the binary from the `C-v*` release pinned in `python/pyproject.toml` — `hatch_build.py` downloads it at build time; nothing is ever compiled |
-| **Local build (override)** | build `native/` yourself with `tools/build_native_local.jl`, then point at it with a `~/.julia/artifacts/Overrides.toml` entry — the package itself has no build step or local-detection logic | set the `PYOPENJPH_LIB_PATH` environment variable to a custom `libopenjph_c` at **runtime** — no reinstall needed (the wgpu-py `WGPU_LIB_PATH` pattern) |
+| **Local build (override)** | build `native/` yourself with `tools/build_native_local.jl`, then point at it with a `~/.julia/artifacts/Overrides.toml` entry — the package itself has no build step or local-detection logic | set the `JP15_LIB_PATH` environment variable to a custom `libopenjph_c` at **runtime** — no reinstall needed (the wgpu-py `WGPU_LIB_PATH` pattern) |
 
 So a normal install needs no compiler on either side, and both ecosystems resolve the native
 library the same way: from a published, immutable `C-v*` release. Developers testing an
 in-progress native change build `native/` themselves and override at load time —
-`Overrides.toml` for Julia (see `docs/RELEASING.md`), `PYOPENJPH_LIB_PATH` for Python. To try a
+`Overrides.toml` for Julia (see `docs/RELEASING.md`), `JP15_LIB_PATH` for Python. To try a
 *different published* C release against Python, download it with
-`python tools/download_native.py --release C-vX.Y.Z.W` and point `PYOPENJPH_LIB_PATH` at the
+`python tools/download_native.py --release C-vX.Y.Z.W` and point `JP15_LIB_PATH` at the
 printed library.
 
 ---
@@ -67,7 +67,7 @@ pip install "python/[test,zarr]"
 cd python && pytest tests/
 
 # Test against a locally built native/ instead (no reinstall):
-PYOPENJPH_LIB_PATH=/path/to/build/libopenjph_c.so pytest tests/
+JP15_LIB_PATH=/path/to/build/libopenjph_c.so pytest tests/
 ```
 
 ### native (standalone)

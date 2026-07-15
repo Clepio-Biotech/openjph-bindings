@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from openjph._constants import PROGRESSION_ORDERS
+from jp15._constants import PROGRESSION_ORDERS
 
 
 # The release of the native lib to use. Tagged in the repo as e.g. 'C-v0.29.0.1'.
@@ -43,16 +43,16 @@ def find_lib() -> Path:
 
     lib_paths = []
     lib_paths.append((pkg_dir / lib_name, ""))
-    if (pkg_dir.parents[2] / ".git").is_dir():
+    if (pkg_dir.parents[1] / ".git").is_dir():
         # Local dev env
         p1 = (
-            pkg_dir.parents[1]
+            pkg_dir.parent
             / "build"
             / f"C-v{NATIVE_VERSION}"
             / f"{os_name}-{arch}"
             / lib_name
         )
-        p2 = pkg_dir.parents[2] / "native" / "build" / lib_name
+        p2 = pkg_dir.parents[1] / "native" / "build" / lib_name
         lib_paths.append((p1, f"Using openjph from dev install: {p1}"))
         lib_paths.append((p2, f"!! Using openjph from local build: {p2}"))
 

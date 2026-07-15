@@ -53,7 +53,7 @@ jobs:
           version: '1'
       # Both sides resolve their pinned, published C release binary — Python
       # via hatch_build.py's download, Julia via Artifacts.toml.
-      - name: Install pyopenjph
+      - name: Install jp15
         run: python -m pip install "./python[zarr]"
       - name: Instantiate Julia packages
         run: julia --project=julia/ZarrCompressorJPH.jl -e 'import Pkg; Pkg.instantiate()'
