@@ -64,7 +64,9 @@ install) downloads the prebuilt `libopenjph_c` from the `C-v*` release pinned in
 one deliberate moment Python switches C binary:
 
 1. If the release should ship a newer C release, bump the `NATIVE_VERSION` in `_backend.py`
-   (a normal, reviewed commit — CI's `python-tests` immediately runs against the new binary).
+   and run `python tools/download_native.py --update-checksums` to record the new release's
+   asset sha256s in `python/hatch_build.py` (a normal, reviewed commit — CI's `python-tests`
+   immediately runs against the new binary).
 2. Bump `[project] version` in `python/pyproject.toml`.
 3. Tag the commit `Python-vX.Y.Z` and push it. `python.yml` then:
    - builds all 6 platform wheels on one Linux runner (`tools/build_wheels.py` — each wheel is

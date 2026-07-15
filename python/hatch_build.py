@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import platform
 import sys
@@ -33,6 +34,20 @@ PLATFORMS = {
 }
 
 _LIB_SUFFIXES = {".so", ".dylib", ".dll"}
+
+# sha256 of each openjph_c-<plat>.tar.gz release asset, keyed by release tag
+# (release assets are mutable on GitHub, so the tag alone is not enough).
+# Releases not listed here (dev overrides) are downloaded without verification.
+CHECKSUMS = {
+    "C-v0.29.0.1": {
+        "linux-x86_64": "6bccf8688925a4f4751de6255e164f6234b579759fc88fd7dd524ae0f2c1fe4d",
+        "linux-aarch64": "d858aadc5c05b508c83b7c1bd247dea54814c9bbdb2d4352b0c4547242f36715",
+        "macos-x86_64": "10917d7ce2077136b83ec462088b35cbd6cb2dc759c99716eb94ca325405411d",
+        "macos-aarch64": "15939cb213773deeaf5b4383434b4ac241ebfd3bc36f0fd3c35ee84e4b4755e4",
+        "windows-x86_64": "423f50769a4c3c128cbb1a3ff1929509ce52d9bf9f8fed2297737c2701f8f487",
+        "windows-aarch64": "823d9e9383ee44e195771582549998e86df1fef0317c54061ce2f164c552432e",
+    },
+}
 
 
 def host_platform() -> str:
@@ -66,6 +81,15 @@ def download_native_lib(release: str, plat: str, dest: Path) -> Path:
     archive = dest / "openjph_c.tar.gz"
     print(f"downloading {url}")
     urllib.request.urlretrieve(url, archive)
+    expected = CHECKSUMS.get(release, {}).get(plat)
+    if expected is None:
+        print(f"warning: no pinned sha256 for {release} {plat}, skipping verification")
+    else:
+        digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+        if digest != expected:
+            raise RuntimeError(
+                f"sha256 mismatch for {url}: expected {expected}, got {digest}"
+            )
     with tarfile.open(archive) as tar:
         tar.extractall(dest, filter="data")
     archive.unlink()
