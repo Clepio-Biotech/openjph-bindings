@@ -76,20 +76,25 @@ def pinned_release(project_root: Path) -> str:
 
 
 def download_native_lib(release: str, plat: str, dest: Path) -> Path:
+    require_checksum = bool(os.environ.get("PYOPENJPH_REQUIRE_CHECKSUM"))
     url = f"{REPO_URL}/releases/download/{release}/openjph_c-{plat}.tar.gz"
     dest.mkdir(parents=True, exist_ok=True)
     archive = dest / "openjph_c.tar.gz"
     print(f"downloading {url}")
     urllib.request.urlretrieve(url, archive)
     expected = CHECKSUMS.get(release, {}).get(plat)
-    if expected is None:
-        print(f"warning: no pinned sha256 for {release} {plat}, skipping verification")
-    else:
+    if expected is not None:
         digest = hashlib.sha256(archive.read_bytes()).hexdigest()
         if digest != expected:
             raise RuntimeError(
                 f"sha256 mismatch for {url}: expected {expected}, got {digest}"
             )
+    elif require_checksum:
+        raise RuntimeError(
+            f"sha256 check for {url} is required but checksum is not listed."
+        )
+    else:
+        print(f"warning: no pinned sha256 for {release} {plat}, skipping verification")
     with tarfile.open(archive) as tar:
         tar.extractall(dest, filter="data")
     archive.unlink()

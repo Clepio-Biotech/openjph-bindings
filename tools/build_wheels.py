@@ -28,10 +28,20 @@ def main() -> None:
 
     for plat in PLATFORMS:
         print(f"--- building wheel for {plat} ---")
-        env = os.environ | {"PYOPENJPH_BUILD_PLATFORM": plat}
+        env = os.environ | {
+            "PYOPENJPH_BUILD_PLATFORM": plat,
+            "PYOPENJPH_REQUIRE_CHECKSUM": "true",
+        }
         subprocess.run(
-            [sys.executable, "-m", "build", "--wheel",
-             str(ROOT_DIR / "python"), "--outdir", str(args.outdir)],
+            [
+                sys.executable,
+                "-m",
+                "build",
+                "--wheel",
+                str(ROOT_DIR / "python"),
+                "--outdir",
+                str(args.outdir),
+            ],
             check=True,
             env=env,
         )
