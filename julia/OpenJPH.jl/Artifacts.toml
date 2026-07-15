@@ -1,56 +1,56 @@
 [[libopenjph_c]]
 arch = "x86_64"
-git-tree-sha1 = "68df00deb0b9b555ac05b07c70936cb317fecf98"
+git-tree-sha1 = "0f0fecf15bf0e13d6ace0fc98b80ba67aba1e26e"
 lazy = true
 libc = "glibc"
 os = "linux"
 
     [[libopenjph_c.download]]
-    sha256 = "6bccf8688925a4f4751de6255e164f6234b579759fc88fd7dd524ae0f2c1fe4d"
-    url = "https://github.com/Clepio-Biotech/openjph-bindings/releases/download/C-v0.29.0.1/openjph_c-linux-x86_64.tar.gz"
+    sha256 = "3e47a299aa5629da33152cc8244c17db41ef060766baced6bc5fb166a773c8e4"
+    url = "https://github.com/Clepio-Biotech/openjph-bindings/releases/download/C-v0.29.0.4/openjph_c-linux-x86_64.tar.gz"
 [[libopenjph_c]]
 arch = "aarch64"
-git-tree-sha1 = "30f44d77be0fcf53145bacc766d2c35f0b068ab4"
+git-tree-sha1 = "2abdd7b5dbfe9f8b7f9c3c57336c8ebd66f72a76"
 lazy = true
 libc = "glibc"
 os = "linux"
 
     [[libopenjph_c.download]]
-    sha256 = "d858aadc5c05b508c83b7c1bd247dea54814c9bbdb2d4352b0c4547242f36715"
-    url = "https://github.com/Clepio-Biotech/openjph-bindings/releases/download/C-v0.29.0.1/openjph_c-linux-aarch64.tar.gz"
+    sha256 = "4eabe4dd8e827942e894bc903b6fa2a038e4dadabeb814afceb98249c1f849d8"
+    url = "https://github.com/Clepio-Biotech/openjph-bindings/releases/download/C-v0.29.0.4/openjph_c-linux-aarch64.tar.gz"
 [[libopenjph_c]]
 arch = "aarch64"
-git-tree-sha1 = "dab970ea0645f49ba01d0c5d7d2630b7035bad56"
+git-tree-sha1 = "870dd02c9af296025800650d81802983eddf953c"
 lazy = true
 os = "macos"
 
     [[libopenjph_c.download]]
-    sha256 = "15939cb213773deeaf5b4383434b4ac241ebfd3bc36f0fd3c35ee84e4b4755e4"
-    url = "https://github.com/Clepio-Biotech/openjph-bindings/releases/download/C-v0.29.0.1/openjph_c-macos-aarch64.tar.gz"
+    sha256 = "4bd37daae20a39ff296268adfe617d099e6d75fd812cf8324d69270b931ecf5b"
+    url = "https://github.com/Clepio-Biotech/openjph-bindings/releases/download/C-v0.29.0.4/openjph_c-macos-aarch64.tar.gz"
 [[libopenjph_c]]
 arch = "x86_64"
-git-tree-sha1 = "c7ffc7a038963b3ff2c38d888388003e2c04ffe2"
+git-tree-sha1 = "4a93fcc73766adb7e5ad2449f9a2fb18c78d9dbe"
 lazy = true
 os = "macos"
 
     [[libopenjph_c.download]]
-    sha256 = "10917d7ce2077136b83ec462088b35cbd6cb2dc759c99716eb94ca325405411d"
-    url = "https://github.com/Clepio-Biotech/openjph-bindings/releases/download/C-v0.29.0.1/openjph_c-macos-x86_64.tar.gz"
+    sha256 = "718d659f06778c6ae47d9dee8b25b1c2b3dda4be8e999ed5c0f6fa7b61781e61"
+    url = "https://github.com/Clepio-Biotech/openjph-bindings/releases/download/C-v0.29.0.4/openjph_c-macos-x86_64.tar.gz"
 [[libopenjph_c]]
 arch = "x86_64"
-git-tree-sha1 = "d221d1317558393ff36c0c3e7987ed156c2f018b"
+git-tree-sha1 = "129abd7e647fbdb2856be5c66e7ee126b59515ef"
 lazy = true
 os = "windows"
 
     [[libopenjph_c.download]]
-    sha256 = "423f50769a4c3c128cbb1a3ff1929509ce52d9bf9f8fed2297737c2701f8f487"
-    url = "https://github.com/Clepio-Biotech/openjph-bindings/releases/download/C-v0.29.0.1/openjph_c-windows-x86_64.tar.gz"
+    sha256 = "b95002ae9b7bc735febe57302775d37e7551b4dc7320fd6a5d2efdd74cc1f64b"
+    url = "https://github.com/Clepio-Biotech/openjph-bindings/releases/download/C-v0.29.0.4/openjph_c-windows-x86_64.tar.gz"
 [[libopenjph_c]]
 arch = "aarch64"
-git-tree-sha1 = "a9b550b38e6bcf022596dee99d32fe7ddece62de"
+git-tree-sha1 = "20ed970672c9916ded96b7e7218a3a762a52f2f0"
 lazy = true
 os = "windows"
 
     [[libopenjph_c.download]]
-    sha256 = "823d9e9383ee44e195771582549998e86df1fef0317c54061ce2f164c552432e"
-    url = "https://github.com/Clepio-Biotech/openjph-bindings/releases/download/C-v0.29.0.1/openjph_c-windows-aarch64.tar.gz"
+    sha256 = "d91fabc8b4bb5e5b23922afd75dd1768abee7965c54ff4508eb29adf60ec1d11"
+    url = "https://github.com/Clepio-Biotech/openjph-bindings/releases/download/C-v0.29.0.4/openjph_c-windows-aarch64.tar.gz"
