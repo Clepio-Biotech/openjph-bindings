@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import ctypes
 import os
 import sys
+import ctypes
 import platform
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -327,7 +328,17 @@ def decode(data: bytes | np.ndarray, *, out: np.ndarray | None = None) -> np.nda
     return out
 
 
-# ---- self-test ----
+# ---- version checks ----
+
+openjph_version = _lib.openjph_version().decode()
+reported_native_version = _lib.openjph_c_version().decode()
+
+if reported_native_version != NATIVE_VERSION:
+    warnings.warn(
+        f"NATIVE_VERSION ({NATIVE_VERSION}) does not match the version that the lib reports ({reported_native_version})",
+        RuntimeWarning,
+        stacklevel=2,
+    )
 
 
 # ctypes resolves symbols by name only and never checks the real signature, so
