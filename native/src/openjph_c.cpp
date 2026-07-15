@@ -25,7 +25,7 @@ namespace {
 // native/CMakeLists.txt's FetchContent_Declare GIT_TAG) plus a trailing
 // wrapper-revision digit. Independent of Python's/Julia's own versions — see
 // tests/check_versions.sh.
-static const char version[] = "0.29.0.1";
+static const char version[] = "0.29.0.4";
 
 /* OpenJPH's default error handler prints the detailed diagnostic (message,
    file, line) to stderr and then throws a generic
@@ -325,7 +325,6 @@ int encode_impl_c(const openjph_array_t *img,
     *out = buf;
     *out_len = n;
     return 0;
-
   } catch (const std::exception &e) {
     std::snprintf(err_buf, err_buf_len, "%s", e.what());
     return -1;
@@ -411,7 +410,6 @@ int get_info_impl_c(const uint8_t *codestream_data, size_t codestream_len,
         read_siz_info(codestream, infile, codestream_data, codestream_len);
     fill_info_outputs(si, out_ndim, out_dims, out_bit_depth, out_is_signed);
     return OPENJPH_OK;
-
   } catch (const std::exception &e) {
     std::snprintf(err_buf, err_buf_len, "%s", e.what());
     return OPENJPH_ERR;
@@ -455,7 +453,6 @@ int decode_impl_c(const uint8_t *codestream_data, size_t codestream_len,
 
     codestream.close();
     return OPENJPH_OK;
-
   } catch (const std::exception &e) {
     std::snprintf(err_buf, err_buf_len, "%s", e.what());
     return OPENJPH_ERR;
