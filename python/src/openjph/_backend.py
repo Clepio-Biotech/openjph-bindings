@@ -1,34 +1,80 @@
 from __future__ import annotations
 
-import ctypes
 import os
 import sys
+import ctypes
+import platform
+import warnings
 from pathlib import Path
 
 import numpy as np
 
 from openjph._constants import PROGRESSION_ORDERS
 
-# Resolve platform-specific library filename.
-_platform = sys.platform
-if _platform == "win32":
-    _lib_name = "openjph_c.dll"
-elif _platform == "darwin":
-    _lib_name = "libopenjph_c.dylib"
-else:
-    _lib_name = "libopenjph_c.so"
 
-_pkg_dir = Path(__file__).parent
-_lib_path = _pkg_dir / _lib_name
+# The release of the native lib to use. Tagged in the repo as e.g. 'C-v0.29.0.1'.
+# When bumping this, also run ``python tools/download_native.py --update-checksums``.
+NATIVE_VERSION = "0.29.0.2"
+
+
+def find_lib() -> Path:
+    # Local-dev override (the wgpu-py WGPU_LIB_PATH pattern): point at a custom
+    # build of libopenjph_c without reinstalling the package.
+    lib_override = os.environ.get("PYOPENJPH_LIB_PATH")
+    if lib_override:
+        return Path(lib_override)
+
+    os_name = {"linux": "linux", "darwin": "macos", "win32": "windows"}[sys.platform]
+
+    arch = {
+        "x86_64": "x86_64",
+        "amd64": "x86_64",
+        "aarch64": "aarch64",
+        "arm64": "aarch64",
+    }[platform.machine().lower()]
+
+    lib_name = {
+        "windows": "openjph_c.dll",
+        "macos": "libopenjph_c.dylib",
+        "linux": "libopenjph_c.so",
+    }[os_name]
+
+    pkg_dir = Path(__file__).parent
+
+    lib_paths = []
+    lib_paths.append((pkg_dir / lib_name, ""))
+    if (pkg_dir.parents[2] / ".git").is_dir():
+        # Local dev env
+        p1 = (
+            pkg_dir.parents[1]
+            / "build"
+            / f"C-v{NATIVE_VERSION}"
+            / f"{os_name}-{arch}"
+            / lib_name
+        )
+        p2 = pkg_dir.parents[2] / "native" / "build" / lib_name
+        lib_paths.append((p1, f"Using openjph from dev install: {p1}"))
+        lib_paths.append((p2, f"!! Using openjph from local build: {p2}"))
+
+    for lib_path, msg in lib_paths:
+        if lib_path.is_file():
+            if msg:
+                print(msg)
+            return lib_path
+    else:
+        raise RuntimeError(f"Could not find lib path from {lib_paths}")
+
+
+lib_path = find_lib()
 
 # On Windows, ctypes searches PATH but not the package directory for transitive DLLs.
-if _platform == "win32" and hasattr(os, "add_dll_directory"):
-    os.add_dll_directory(str(_pkg_dir))
+if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
+    os.add_dll_directory(str(lib_path.parent))
 
 try:
-    _lib = ctypes.CDLL(str(_lib_path) if _lib_path.exists() else _lib_name)
+    _lib = ctypes.CDLL(lib_path)
 except OSError as e:
-    raise ImportError(f"Could not load {_lib_name}: {e}") from e
+    raise ImportError(f"Could not load {lib_path}: {e}") from e
 
 # ---- C struct mirrors ----
 
@@ -280,3 +326,38 @@ def decode(data: bytes | np.ndarray, *, out: np.ndarray | None = None) -> np.nda
         raise RuntimeError(f"openjph_decode: {err_buf.value.decode(errors='replace')}")
 
     return out
+
+
+# ---- version checks ----
+
+openjph_version = _lib.openjph_version().decode()
+reported_native_version = _lib.openjph_c_version().decode()
+
+if reported_native_version != NATIVE_VERSION:
+    warnings.warn(
+        f"NATIVE_VERSION ({NATIVE_VERSION}) does not match the version that the lib reports ({reported_native_version})",
+        RuntimeWarning,
+        stacklevel=2,
+    )
+
+
+# ctypes resolves symbols by name only and never checks the real signature, so
+# a library built from the wrong C release would corrupt memory silently. A
+# tiny round-trip at import time turns that into an immediate, clear error.
+def _self_test() -> None:
+    probe = np.array([[0, 1], [2, 3]], dtype=np.uint8)
+    try:
+        result = decode(encode(probe))
+    except Exception as e:
+        raise ImportError(
+            "openjph self-test failed: libopenjph_c does not match this "
+            "package's expected C ABI"
+        ) from e
+    if not np.array_equal(result, probe):
+        raise ImportError(
+            "openjph self-test produced incorrect output: libopenjph_c does "
+            "not match this package's expected C ABI"
+        )
+
+
+_self_test()

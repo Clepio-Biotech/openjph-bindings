@@ -3,6 +3,9 @@ name: Native
 on:
   workflow_call:
   workflow_dispatch:
+  push:
+    tags: ["C-v*"]
+
 
 jobs:
 
@@ -148,3 +151,51 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo "Native part is done"
+
+  # ------------------------------
+  publish-github:
+    name: Publish libs to Github
+    # Only depends on native's build artifacts (the only thing this job
+    # publishes) — gating on python-done/julia-done/generic-done as well
+    # meant an unrelated failure (e.g. generic-version-check) silently
+    # skipped the release with no tarballs published at all.
+    if: success() && startsWith(github.ref, 'refs/tags/C-v')
+    needs: [native-done]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: set version (which gets used as release name)
+        run: |
+          TAG_VERSION="${GITHUB_REF/refs\/tags\//}"
+          CPP_VERSION="C-v$(sed -n 's/.*version\[\] = "\(.*\)".*/\1/p' native/src/openjph_c.cpp)"
+          echo "TAG_VERSION=$TAG_VERSION" >> "$GITHUB_ENV"
+          if [ "$CPP_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match source version ($CPP_VERSION)"
+            exit 1
+          fi
+          echo "Tag and source versions match: $CPP_VERSION and $TAG_VERSION"
+        shell: bash
+      - name: Download assets
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+      - run: find dist -type f
+      - name: Create commit-sha file
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          echo $GITHUB_SHA > dist/commit-sha
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.TAG_VERSION }}
+          name: ${{ env.TAG_VERSION }}
+          files: |
+            dist/**/*.tar.gz
+            dist/commit-sha
+          body: |
+            Precompiled binary modules.
+          draft: false
+          prerelease: false

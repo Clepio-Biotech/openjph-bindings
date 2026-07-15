@@ -29,6 +29,30 @@ def test_public_api_importable() -> None:
     assert openjph.decode is _backend.decode
 
 
+def test_self_test_passes_on_a_working_install() -> None:
+    # Already ran once at import time; re-running must be side-effect-free
+    # and still pass against the real library.
+    openjph_backend._self_test()
+
+
+def test_self_test_catches_a_raising_backend(monkeypatch) -> None:
+    def _broken_decode(data, *, out=None):
+        raise RuntimeError("simulated ABI mismatch")
+
+    monkeypatch.setattr(openjph_backend, "decode", _broken_decode)
+    with pytest.raises(ImportError, match="self-test failed"):
+        openjph_backend._self_test()
+
+
+def test_self_test_catches_a_silently_wrong_backend(monkeypatch) -> None:
+    def _wrong_decode(data, *, out=None):
+        return np.zeros((2, 2), dtype=np.uint8)
+
+    monkeypatch.setattr(openjph_backend, "decode", _wrong_decode)
+    with pytest.raises(ImportError, match="incorrect output"):
+        openjph_backend._self_test()
+
+
 def test_ctypes_struct_layout_matches_c_abi() -> None:
     # The ctypes structs must match the C structs in native/include/openjph_c.h.
     # Both C structs are naturally aligned with no padding, so ctypes' computed

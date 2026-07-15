@@ -1,9 +1,6 @@
 [build-system]
-requires = [
-    "scikit-build-core>=0.10",
-    "cmake>=3.24",
-]
-build-backend = "scikit_build_core.build"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "pyopenjph"
@@ -12,46 +9,20 @@ description = "Python bindings for OpenJPH HTJ2K encode/decode"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "BSD-2-Clause" }
-authors = [
-    { name = "Alessandro A. Grande" },
-]
-dependencies = [
-    "numpy>=2,<3",
-]
+authors = [{ name = "Alessandro A. Grande" }]
+dependencies = ["numpy>=2,<3"]
 
 [project.optional-dependencies]
-zarr = [
-    "zarr>=3.1.3",
-]
-test = [
-    "pytest>=8",
-    "zarr>=3.1.3",
-]
-dev = [
-    "pre-commit>=4.3",
-]
+zarr = ["zarr>=3.1.3"]
+test = ["pytest>=8", "zarr>=3.1.3"]
+dev = ["pre-commit>=4.3"]
 
 [project.entry-points."zarr.codecs"]
 openjph_htj2k = "openjph.zarr:OpenJPHCodec"
 
-[tool.scikit-build]
-build-dir = "build/{wheel_tag}"
-minimum-version = "build-system.requires"
-wheel.packages = ["src/openjph"]
 
-[tool.cibuildwheel]
-build = "cp312-* cp313-*"
-# musllinux (Alpine/musl libc) is unnecessary for this scientific package and
-# doubles the Linux build count — skip it.
-skip = "*-musllinux*"
-test-extras = ["test", "zarr"]
-test-command = "pytest {package}/tests"
+[tool.hatch.build.targets.wheel]
+packages = ["src/openjph"]
 
-[tool.cibuildwheel.linux]
-archs = ["x86_64", "aarch64"]
-
-[tool.cibuildwheel.macos]
-archs = ["x86_64", "arm64"]
-
-[tool.cibuildwheel.macos.environment]
-MACOSX_DEPLOYMENT_TARGET = "10.13"
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"
