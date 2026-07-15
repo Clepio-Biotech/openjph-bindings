@@ -15,7 +15,7 @@ import sys
 import numpy as np
 import zarr
 
-from openjph.zarr import OpenJPHCodec
+from jp15.zarr import OpenJPHCodec
 
 
 def main(outdir: str) -> None:
