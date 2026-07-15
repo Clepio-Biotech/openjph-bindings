@@ -39,6 +39,14 @@ _LIB_SUFFIXES = {".so", ".dylib", ".dll"}
 # (release assets are mutable on GitHub, so the tag alone is not enough).
 # Releases not listed here (dev overrides) are downloaded without verification.
 CHECKSUMS = {
+    "C-v0.29.0.2": {
+        "linux-x86_64": "ff0b746670f6174fee969dc7c5213dbd73478880f6e3df33c8f042da5ae364d2",
+        "linux-aarch64": "9b0b7ebd676ba32905d44482a6d04a47602a3d64ec93976ed40fbc8ae8d150fe",
+        "macos-x86_64": "3e0d5438457311b119269f2e32a427d4388c8381e24f3e02f2a0011524bbefdb",
+        "macos-aarch64": "63480359faedc8842a890a60cb510211831b84e7900ceef593cfb832198241c2",
+        "windows-x86_64": "79ec155624be3bbb867deb8b681052c6ff1a9b1c2842a8d7e348158a63492fec",
+        "windows-aarch64": "b2d693d29131544f995f0067331d011f7033d0d9f84a9b040f34040e98913515",
+    },
     "C-v0.29.0.1": {
         "linux-x86_64": "6bccf8688925a4f4751de6255e164f6234b579759fc88fd7dd524ae0f2c1fe4d",
         "linux-aarch64": "d858aadc5c05b508c83b7c1bd247dea54814c9bbdb2d4352b0c4547242f36715",
