@@ -140,6 +140,9 @@ _lib.openjph_encode.argtypes = [
 _lib.openjph_free.restype = None
 _lib.openjph_free.argtypes = [ctypes.c_void_p]
 
+_lib.openjph_version.restype = ctypes.c_char_p
+_lib.openjph_c_version.restype = ctypes.c_char_p
+
 # decode is caller-allocated: get_info probes the SIZ marker so the caller can
 # size a buffer, then decode writes into it directly. Nothing C-allocated
 # crosses the FFI on this path, so there is no free to call.

@@ -468,6 +468,17 @@ int decode_impl_c(const uint8_t *codestream_data, size_t codestream_len,
 
 extern "C" {
 
+const char *openjph_version(void) {
+  // OPENJPH_VERSION_MAJOR/MINOR/PATCH exist; compose a static string.
+  static char v[32];
+  if (v[0] == '\0')
+    std::snprintf(v, sizeof(v), "%d.%d.%d", OPENJPH_VERSION_MAJOR,
+                  OPENJPH_VERSION_MINOR, OPENJPH_VERSION_PATCH);
+  return v;
+}
+
+const char *openjph_c_version(void) { return version; }
+
 int openjph_encode(const openjph_array_t *img,
                    const openjph_encode_params_t *params, uint8_t **out,
                    size_t *out_len, char *err_buf, size_t err_buf_len) {
