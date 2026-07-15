@@ -14,7 +14,7 @@ from openjph._constants import PROGRESSION_ORDERS
 
 # The release of the native lib to use. Tagged in the repo as e.g. 'C-v0.29.0.1'.
 # When bumping this, also run ``python tools/download_native.py --update-checksums``.
-NATIVE_VERSION = "0.29.0.2"
+NATIVE_VERSION = "0.29.0.4"
 
 
 def find_lib() -> Path:
