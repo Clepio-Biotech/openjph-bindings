@@ -45,6 +45,12 @@ typedef struct {
 extern "C" {
 #endif
 
+/** Returns the version of the OpenJPH library e.g. "3.29.1" */
+OPENJPH_API const char *openjph_version(void);
+
+/** Returns the version of our C API, e.g. "3.29.1.4" */
+OPENJPH_API const char *openjph_c_version(void);
+
 /* Encode an array to an HTJ2K codestream.
    On success returns 0, sets *out and *out_len. Caller must free *out with
    openjph_free(). On failure returns -1, writes a null-terminated message into

@@ -11,7 +11,7 @@ OpenJPH is embedded statically into the shared library at build time via
 
 ```bash
 cmake -B build . -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc)
+cmake --build build -j$(nproc) --config Release
 # Produces: build/libopenjph_c.so
 ```
 
