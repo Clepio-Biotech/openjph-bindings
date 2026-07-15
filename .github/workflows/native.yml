@@ -175,7 +175,7 @@ jobs:
             echo "::error::Tag version ($TAG_VERSION) does not match source version ($CPP_VERSION)"
             exit 1
           fi
-          echo "Versions match: $CPP_VERSION and $TAG_VERSION"
+          echo "Tag and source versions match: $CPP_VERSION and $TAG_VERSION"
         shell: bash
       - name: Download assets
         uses: actions/download-artifact@v8
