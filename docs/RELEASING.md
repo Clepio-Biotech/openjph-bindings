@@ -27,7 +27,7 @@ each other — `ZarrCompressorJPH.jl` declares which `OpenJPH` versions it suppo
 
 1. Bump `native/src/openjph_c.cpp`'s `version` string if needed (vendored-OpenJPH-version +
    wrapper-revision digit) and confirm `bash tests/check_versions.sh` passes.
-2. Tag the commit `C-vX.Y.Z.W` and push it. `.github/workflows/ci.yml`'s tag trigger is scoped to
+2. Tag the commit `C-vX.Y.Z.W` and push it. `.github/workflows/native.yml`'s tag trigger is scoped to
    `C-v*` specifically, so this is the only tag shape that kicks off the native build/publish
    pipeline (a Julia or future Python package tag push does nothing here).
 3. `native-linux-build`/`native-windows-build`/`native-macos-build` build `libopenjph_c` for all 6
