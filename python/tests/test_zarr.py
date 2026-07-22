@@ -5,7 +5,7 @@ import io
 import numpy as np
 import pytest
 
-from openjph.zarr import OpenJPHCodec, OpenJPHCodecUnavailableError
+from jp15.zarr import OpenJPHCodec, OpenJPHCodecUnavailableError
 
 RNG = np.random.default_rng(42)
 
@@ -55,9 +55,9 @@ def test_to_dict_roundtrip() -> None:
 def test_roundtrip_2d(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     import zarr
 
-    from openjph import zarr as openjph_zarr
+    from jp15 import zarr as jp15_zarr
 
-    monkeypatch.setattr(openjph_zarr, "_get_backend", lambda: _FakeOpenJPHBackend())
+    monkeypatch.setattr(jp15_zarr, "_get_backend", lambda: _FakeOpenJPHBackend())
 
     shape = (64, 96)
     data = _make_uint16(shape)
@@ -81,9 +81,9 @@ def test_roundtrip_2d(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
 def test_roundtrip_channel_last(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     import zarr
 
-    from openjph import zarr as openjph_zarr
+    from jp15 import zarr as jp15_zarr
 
-    monkeypatch.setattr(openjph_zarr, "_get_backend", lambda: _FakeOpenJPHBackend())
+    monkeypatch.setattr(jp15_zarr, "_get_backend", lambda: _FakeOpenJPHBackend())
 
     shape = (24, 40, 3)
     data = _make_uint16(shape)
@@ -106,12 +106,12 @@ def test_roundtrip_channel_last(tmp_path, monkeypatch: pytest.MonkeyPatch) -> No
 def test_backend_missing_raises(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     import zarr
 
-    from openjph import zarr as openjph_zarr
+    from jp15 import zarr as jp15_zarr
 
     def _raise() -> _FakeOpenJPHBackend:
         raise OpenJPHCodecUnavailableError("backend missing")
 
-    monkeypatch.setattr(openjph_zarr, "_get_backend", _raise)
+    monkeypatch.setattr(jp15_zarr, "_get_backend", _raise)
 
     shape = (16, 16)
     arr = zarr.create(
@@ -162,7 +162,7 @@ def test_rejects_bad_progression_order() -> None:
     ],
 )
 def test_real_backend_roundtrip(tmp_path, layout, shape) -> None:
-    pytest.importorskip("openjph._backend")
+    pytest.importorskip("jp15._backend")
     import zarr
 
     data = _make_uint16(shape)
@@ -184,7 +184,7 @@ def test_real_backend_singleton_chunks(tmp_path) -> None:
     # The PR #3 bug shape: a non-singleton array stored with chunks whose
     # component axis is 1, so every chunk encodes to a 1-component codestream
     # that decodes 2-D and previously failed the codec shape check at read time.
-    pytest.importorskip("openjph._backend")
+    pytest.importorskip("jp15._backend")
     import zarr
 
     shape = (4, 64, 96)
@@ -203,7 +203,7 @@ def test_real_backend_singleton_chunks(tmp_path) -> None:
 
 
 def test_real_backend_lossy(tmp_path) -> None:
-    pytest.importorskip("openjph._backend")
+    pytest.importorskip("jp15._backend")
     import zarr
 
     shape = (64, 96)

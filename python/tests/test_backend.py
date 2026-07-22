@@ -5,7 +5,7 @@ import importlib
 import numpy as np
 import pytest
 
-openjph_backend = pytest.importorskip("openjph._backend")
+jp15_backend = pytest.importorskip("jp15._backend")
 
 RNG = np.random.default_rng(123)
 
@@ -15,42 +15,42 @@ def _make_uint16(shape: tuple[int, ...]) -> np.ndarray:
 
 
 def test_backend_module_importable() -> None:
-    mod = importlib.import_module("openjph._backend")
+    mod = importlib.import_module("jp15._backend")
     assert hasattr(mod, "encode")
     assert hasattr(mod, "decode")
 
 
 def test_public_api_importable() -> None:
-    import openjph
+    import jp15
 
-    from openjph import _backend
+    from jp15 import _backend
 
-    assert openjph.encode is _backend.encode
-    assert openjph.decode is _backend.decode
+    assert jp15.encode is _backend.encode
+    assert jp15.decode is _backend.decode
 
 
 def test_self_test_passes_on_a_working_install() -> None:
     # Already ran once at import time; re-running must be side-effect-free
     # and still pass against the real library.
-    openjph_backend._self_test()
+    jp15_backend._self_test()
 
 
 def test_self_test_catches_a_raising_backend(monkeypatch) -> None:
     def _broken_decode(data, *, out=None):
         raise RuntimeError("simulated ABI mismatch")
 
-    monkeypatch.setattr(openjph_backend, "decode", _broken_decode)
+    monkeypatch.setattr(jp15_backend, "decode", _broken_decode)
     with pytest.raises(ImportError, match="self-test failed"):
-        openjph_backend._self_test()
+        jp15_backend._self_test()
 
 
 def test_self_test_catches_a_silently_wrong_backend(monkeypatch) -> None:
     def _wrong_decode(data, *, out=None):
         return np.zeros((2, 2), dtype=np.uint8)
 
-    monkeypatch.setattr(openjph_backend, "decode", _wrong_decode)
+    monkeypatch.setattr(jp15_backend, "decode", _wrong_decode)
     with pytest.raises(ImportError, match="incorrect output"):
-        openjph_backend._self_test()
+        jp15_backend._self_test()
 
 
 def test_ctypes_struct_layout_matches_c_abi() -> None:
@@ -60,7 +60,7 @@ def test_ctypes_struct_layout_matches_c_abi() -> None:
     # (e.g. size_t vs int) that would silently corrupt the FFI.
     import ctypes
 
-    from openjph import _backend
+    from jp15 import _backend
 
     def sum_field_sizes(struct: type[ctypes.Structure]) -> int:
         return sum(ctypes.sizeof(t) for _, t in struct._fields_)
@@ -78,7 +78,7 @@ def test_ctypes_struct_layout_matches_c_abi() -> None:
 def test_roundtrip_2d() -> None:
     data = _make_uint16((32, 48))
 
-    encoded = openjph_backend.encode(
+    encoded = jp15_backend.encode(
         data,
         irreversible=False,
         qstep=None,
@@ -88,7 +88,7 @@ def test_roundtrip_2d() -> None:
         color_transform=False,
         planar=True,
     )
-    decoded = openjph_backend.decode(encoded)
+    decoded = jp15_backend.decode(encoded)
 
     np.testing.assert_array_equal(decoded, data)
 
@@ -96,7 +96,7 @@ def test_roundtrip_2d() -> None:
 def test_roundtrip_3d() -> None:
     data = _make_uint16((4, 24, 32))
 
-    encoded = openjph_backend.encode(
+    encoded = jp15_backend.encode(
         data,
         irreversible=False,
         qstep=None,
@@ -106,7 +106,7 @@ def test_roundtrip_3d() -> None:
         color_transform=False,
         planar=True,
     )
-    decoded = openjph_backend.decode(encoded)
+    decoded = jp15_backend.decode(encoded)
 
     np.testing.assert_array_equal(decoded, data)
 
@@ -117,7 +117,7 @@ def test_singleton_component_decodes_as_2d() -> None:
     # ambiguity is inherent to the codestream; callers with a target shape
     # (e.g. the Zarr codecs) are responsible for restoring the singleton axis.
     data = _make_uint16((1, 24, 32))
-    decoded = openjph_backend.decode(openjph_backend.encode(data))
+    decoded = jp15_backend.decode(jp15_backend.encode(data))
     assert decoded.shape == (24, 32)
     np.testing.assert_array_equal(decoded, data[0])
 
@@ -134,7 +134,7 @@ def test_roundtrip_3d_stack_distinct_slices() -> None:
             for s in range(Z)
         ]
     )
-    decoded = openjph_backend.decode(openjph_backend.encode(data, planar=True))
+    decoded = jp15_backend.decode(jp15_backend.encode(data, planar=True))
 
     assert decoded.shape == data.shape
     for s in range(Z):
@@ -144,10 +144,10 @@ def test_roundtrip_3d_stack_distinct_slices() -> None:
 
 def test_get_info_matches_decode() -> None:
     data = _make_uint16((32, 48))
-    encoded = openjph_backend.encode(data)
+    encoded = jp15_backend.encode(data)
 
-    shape, dtype = openjph_backend.get_info(encoded)
-    decoded = openjph_backend.decode(encoded)
+    shape, dtype = jp15_backend.get_info(encoded)
+    decoded = jp15_backend.decode(encoded)
 
     assert shape == decoded.shape
     assert dtype == decoded.dtype
@@ -155,10 +155,10 @@ def test_get_info_matches_decode() -> None:
 
 def test_decode_into_caller_buffer() -> None:
     data = _make_uint16((32, 48))
-    encoded = openjph_backend.encode(data)
+    encoded = jp15_backend.encode(data)
 
     out = np.empty((32, 48), dtype=np.uint16)
-    result = openjph_backend.decode(encoded, out=out)
+    result = jp15_backend.decode(encoded, out=out)
 
     assert result is out
     np.testing.assert_array_equal(out, data)
@@ -168,10 +168,10 @@ def test_decode_into_caller_buffer_restores_singleton_axis() -> None:
     # get_info/decode alone can't distinguish (1, h, w) from (h, w) — a caller
     # who knows the intended shape passes a matching `out` instead.
     data = _make_uint16((1, 24, 32))
-    encoded = openjph_backend.encode(data)
+    encoded = jp15_backend.encode(data)
 
     out = np.empty((1, 24, 32), dtype=np.uint16)
-    result = openjph_backend.decode(encoded, out=out)
+    result = jp15_backend.decode(encoded, out=out)
 
     assert result is out
     np.testing.assert_array_equal(out, data)
@@ -179,12 +179,12 @@ def test_decode_into_caller_buffer_restores_singleton_axis() -> None:
 
 def test_decode_into_caller_buffer_rejects_mismatch() -> None:
     data = _make_uint16((32, 48))
-    encoded = openjph_backend.encode(data)
+    encoded = jp15_backend.encode(data)
 
     with pytest.raises(ValueError, match="dtype"):
-        openjph_backend.decode(encoded, out=np.empty((32, 48), dtype=np.uint8))
+        jp15_backend.decode(encoded, out=np.empty((32, 48), dtype=np.uint8))
     with pytest.raises(ValueError, match="bytes"):
-        openjph_backend.decode(encoded, out=np.empty((32, 47), dtype=np.uint16))
+        jp15_backend.decode(encoded, out=np.empty((32, 47), dtype=np.uint16))
 
 
 def test_error_message_carries_openjph_detail() -> None:
@@ -194,14 +194,14 @@ def test_error_message_carries_openjph_detail() -> None:
     # "ojph error" — the wrapper installs a capturing handler instead.
     bad = b"\xff\x4f" + b"\x00" * 62  # SOC marker followed by a garbage SIZ
     with pytest.raises(RuntimeError, match="SIZ") as excinfo:
-        openjph_backend.decode(bad)
+        jp15_backend.decode(bad)
     assert "ojph error" not in str(excinfo.value)
 
 
 def test_irreversible_uint16_roundtrip() -> None:
     data = _make_uint16((32, 48))
 
-    encoded = openjph_backend.encode(
+    encoded = jp15_backend.encode(
         data,
         irreversible=True,
         qstep=0.01,
@@ -211,7 +211,7 @@ def test_irreversible_uint16_roundtrip() -> None:
         color_transform=False,
         planar=True,
     )
-    decoded = openjph_backend.decode(encoded)
+    decoded = jp15_backend.decode(encoded)
 
     assert decoded.shape == data.shape
     assert decoded.dtype == np.uint16

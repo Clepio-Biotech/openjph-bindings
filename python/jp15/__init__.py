@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version
 
-from openjph._backend import decode, encode, get_info
+from jp15._backend import decode, encode, get_info
 
 try:
-    __version__ = version("pyopenjph")
+    __version__ = version("jp15")
 except PackageNotFoundError:
     __version__ = "0+unknown"
 

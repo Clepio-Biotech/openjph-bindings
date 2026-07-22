@@ -1,7 +1,7 @@
 # Hatchling build hook: download the prebuilt libopenjph_c from a published
 # C-v* GitHub release and package it into the wheel (the wgpu-py model — no
-# compilation, ever). The release is pinned in _backend.py; PYOPENJPH_NATIVE_RELEASE overrides it, and
-# PYOPENJPH_BUILD_PLATFORM selects a non-host target for cross-platform
+# compilation, ever). The release is pinned in _backend.py; JP15_NATIVE_RELEASE overrides it, and
+# JP15_BUILD_PLATFORM selects a non-host target for cross-platform
 # builds (see tools/build_wheels.py).
 
 from __future__ import annotations
@@ -78,9 +78,7 @@ def host_platform() -> str:
 
 
 def pinned_release(project_root: Path) -> str:
-    with open(
-        project_root / "src" / "openjph" / "_backend.py", "rt", encoding="utf-8"
-    ) as f:
+    with open(project_root / "jp15" / "_backend.py", "rt", encoding="utf-8") as f:
         for line in f.readlines():
             if line.startswith("NATIVE_VERSION ="):
                 break
@@ -92,7 +90,7 @@ def pinned_release(project_root: Path) -> str:
 
 
 def download_native_lib(release: str, plat: str, dest: Path) -> Path:
-    require_checksum = bool(os.environ.get("PYOPENJPH_REQUIRE_CHECKSUM"))
+    require_checksum = bool(os.environ.get("JP15_REQUIRE_CHECKSUM"))
     url = f"{REPO_URL}/releases/download/{release}/openjph_c-{plat}.tar.gz"
     dest.mkdir(parents=True, exist_ok=True)
     archive = dest / "openjph_c.tar.gz"
@@ -134,14 +132,12 @@ def to_h_file(p: str) -> str:
 class NativeLibBuildHook(BuildHookInterface):
     def initialize(self, version: str, build_data: dict) -> None:
         root = Path(self.root)
-        plat = os.environ.get("PYOPENJPH_BUILD_PLATFORM") or host_platform()
-        release = os.environ.get("PYOPENJPH_NATIVE_RELEASE") or pinned_release(root)
+        plat = os.environ.get("JP15_BUILD_PLATFORM") or host_platform()
+        release = os.environ.get("JP15_NATIVE_RELEASE") or pinned_release(root)
 
         lib = download_native_lib(release, plat, root / "build" / release / plat)
 
         build_data["pure_python"] = False
         build_data["tag"] = f"py3-none-{PLATFORMS[plat]}"
-        build_data["force_include"][str(lib)] = f"openjph/{lib.name}"
-        build_data["force_include"][to_h_file(str(lib))] = to_h_file(
-            f"openjph/{lib.name}"
-        )
+        build_data["force_include"][str(lib)] = f"jp15/{lib.name}"
+        build_data["force_include"][to_h_file(str(lib))] = to_h_file(f"jp15/{lib.name}")

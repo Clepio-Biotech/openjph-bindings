@@ -18,7 +18,7 @@ import sys
 import numpy as np
 import pytest
 
-openjph_backend = pytest.importorskip("openjph._backend")
+jp15_backend = pytest.importorskip("jp15._backend")
 
 RNG = np.random.default_rng(42)
 
@@ -43,11 +43,11 @@ def test_encode_decode_rss_stable() -> None:
     garbage = b"\xff\x4f" + b"\x00" * 62
 
     def one_cycle() -> None:
-        decoded = openjph_backend.decode(openjph_backend.encode(data))
+        decoded = jp15_backend.decode(jp15_backend.encode(data))
         assert decoded.shape == data.shape
         # The error path must not leak either.
         with pytest.raises(RuntimeError):
-            openjph_backend.decode(garbage)
+            jp15_backend.decode(garbage)
 
     for _ in range(WARMUP_CYCLES):
         one_cycle()

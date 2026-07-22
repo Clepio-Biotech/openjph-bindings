@@ -3,7 +3,7 @@
 # read back identically through the Julia codec (compared against a plain-codec
 # store to factor out Zarr.jl's axis-order convention).
 #
-# Requires: pyopenjph installed (`pip install python/[zarr]` — the build downloads
+# Requires: jp15 installed (`pip install "./python/[zarr]"` — the build downloads
 # its pinned C release binary), and the Julia OpenJPH/ZarrCompressorJPH packages built.
 set -euo pipefail
 

@@ -1,6 +1,6 @@
 # Download a prebuilt libopenjph_c from a C-v* GitHub release (the tarballs
 # ci.yml's publish-github job attaches, one per platform) — e.g. to test a new
-# C release before bumping the pin, by pointing PYOPENJPH_LIB_PATH at the
+# C release before bumping the pin, by pointing JP15_LIB_PATH at the
 # downloaded library. The Python analog of tools/gen_artifacts.jl.
 #
 #   python tools/download_native.py                        # host platform, pinned release
@@ -51,7 +51,9 @@ def update_checksums(release: str) -> None:
     # Drop any existing entry for this release, then insert the fresh one at
     # the top of the CHECKSUMS dict.
     src = re.sub(rf'    "{re.escape(release)}": \{{.*?\}},\n', "", src, flags=re.DOTALL)
-    src, n = re.subn("CHECKSUMS = {\n", "CHECKSUMS = {\n" + checksums_entry(release), src)
+    src, n = re.subn(
+        "CHECKSUMS = {\n", "CHECKSUMS = {\n" + checksums_entry(release), src
+    )
     if n != 1:
         raise RuntimeError(f"could not find CHECKSUMS dict in {path}")
     path.write_text(src, encoding="utf-8")
@@ -60,15 +62,19 @@ def update_checksums(release: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--release", default=None, help="C-v* release tag (default: the pin)")
+    parser.add_argument(
+        "--release", default=None, help="C-v* release tag (default: the pin)"
+    )
     parser.add_argument("--platform", default=None, choices=[*PLATFORMS, "all"])
     parser.add_argument("--dest", type=Path, default=ROOT_DIR / "native-download")
     parser.add_argument(
-        "--print-checksums", action="store_true",
+        "--print-checksums",
+        action="store_true",
         help="download all six assets and print a CHECKSUMS entry for python/hatch_build.py",
     )
     parser.add_argument(
-        "--update-checksums", action="store_true",
+        "--update-checksums",
+        action="store_true",
         help="like --print-checksums, but write the entry into python/hatch_build.py",
     )
     args = parser.parse_args()
@@ -80,7 +86,11 @@ def main() -> None:
     if args.print_checksums:
         print(checksums_entry(release), end="")
         return
-    platforms = list(PLATFORMS) if args.platform == "all" else [args.platform or host_platform()]
+    platforms = (
+        list(PLATFORMS)
+        if args.platform == "all"
+        else [args.platform or host_platform()]
+    )
     for plat in platforms:
         print(download_native_lib(release, plat, args.dest / release / plat))
 

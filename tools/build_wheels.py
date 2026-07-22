@@ -3,7 +3,7 @@
 # libopenjph_c from the pinned C-v* release and tags the wheel accordingly.
 #
 #   python tools/build_wheels.py --outdir dist
-#   PYOPENJPH_NATIVE_RELEASE=C-v0.29.0.2 python tools/build_wheels.py --outdir dist
+#   JP15_NATIVE_RELEASE=C-v0.29.0.2 python tools/build_wheels.py --outdir dist
 #
 # Requires the `build` package (python -m pip install build).
 
@@ -29,8 +29,8 @@ def main() -> None:
     for plat in PLATFORMS:
         print(f"--- building wheel for {plat} ---")
         env = os.environ | {
-            "PYOPENJPH_BUILD_PLATFORM": plat,
-            "PYOPENJPH_REQUIRE_CHECKSUM": "true",
+            "JP15_BUILD_PLATFORM": plat,
+            "JP15_REQUIRE_CHECKSUM": "true",
         }
         subprocess.run(
             [
