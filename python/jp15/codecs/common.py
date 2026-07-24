@@ -125,14 +125,14 @@ def pre_encode_reshape(data: np.ndarray, layout: Layout) -> np.ndarray:
     return np.ascontiguousarray(data)
 
 
-def post_decode_reshape(arr: np.ndarray, layout: Layout, spec_shape, expected_dtype):
+def post_decode_reshape(arr: np.ndarray, layout: Layout, result_shape, result_dtype):
     """If necessarry, reshape array after decoding."""
     # A single-component codestream is ambiguous: the SIZ marker cannot
     # distinguish (h, w) from (1, h, w), so the backend returns 2-D and a
     # singleton component axis requested by the chunk spec must be restored
     # here. Only singleton axes are reconciled; any other mismatch still
     # fails the check below.
-    expected_shape = _backend_shape(spec_shape, layout)
+    expected_shape = _backend_shape(result_shape, layout)
     if arr.shape != expected_shape and tuple(d for d in arr.shape if d != 1) == tuple(
         d for d in expected_shape if d != 1
     ):
@@ -141,17 +141,17 @@ def post_decode_reshape(arr: np.ndarray, layout: Layout, spec_shape, expected_dt
         arr = np.moveaxis(arr, 0, -1)
     arr = np.ascontiguousarray(arr)
 
-    if arr.shape != expected_shape:
+    if arr.shape != result_shape:
         raise ValueError(
             "OpenJPH backend returned an unexpected shape: "
-            f"expected {expected_shape}, got {arr.shape} (layout {layout})"
+            f"expected {result_shape}, got {arr.shape} (layout {layout})"
         )
     # The backend infers dtype from the codestream's SIZ marker, so for a
     # validated array this astype is a no-op; it only guards against a
     # backend/metadata disagreement (and never silently widens, since the
     # codestream stores the exact bit-depth/signedness it was written with).
-    if arr.dtype != expected_dtype:
-        arr = arr.astype(expected_dtype, copy=False)
+    if arr.dtype != result_dtype:
+        arr = arr.astype(result_dtype, copy=False)
     return arr
 
 

@@ -215,13 +215,14 @@ class OpenJPHCodec(ArrayBytesCodec):
         layout = cast("Layout", effective.layout)
         backend = _get_backend()
 
-        native_dtype = chunk_spec.dtype.to_native_dtype()
         decoded = await asyncio.to_thread(
             backend.decode,
             chunk_bytes.to_bytes(),
         )
         arr = np.asarray(decoded)
-        arr = post_decode_reshape(arr, layout, chunk_spec.shape, native_dtype)
+        arr = post_decode_reshape(
+            arr, layout, chunk_spec.shape, chunk_spec.dtype.to_native_dtype()
+        )
         return chunk_spec.prototype.nd_buffer.from_ndarray_like(arr)
 
     def compute_encoded_size(
