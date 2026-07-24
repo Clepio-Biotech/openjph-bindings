@@ -1,3 +1,7 @@
+"""
+Test the zarr-python codec.
+"""
+
 from __future__ import annotations
 
 import io

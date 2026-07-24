@@ -1,3 +1,7 @@
+"""
+Test the simplezarr codec.
+"""
+
 from __future__ import annotations
 
 import io
