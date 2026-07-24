@@ -20,6 +20,9 @@ dev = ["pre-commit>=4.3"]
 [project.entry-points."zarr.codecs"]
 openjph_htj2k = "jp15.codecs.zarr:OpenJPHCodec"
 
+[project.entry-points."simplezarr.codecs"]
+openjph_htj2k = "jp15.codecs.simplezarr:OpenJPHSimplezarrCodec"
+
 [tool.hatch.build.targets.wheel]
 packages = ["jp15"]
 

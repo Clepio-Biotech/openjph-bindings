@@ -50,15 +50,13 @@ def normalize_config(
     }
 
 
-def validate_config(config, shape: tuple[int, ...], dtype) -> None:
+def validate_config(config, shape: tuple[int, ...], dtype: np.dtype) -> None:
     """Validate codec config for a specific block array."""
 
     layout = config["layout"] or _default_layout(shape)
     color_transform = config["color_transform"]
     qstep = config["qstep"]
     irreversible = config["irreversible"]
-
-    native = dtype.to_native_dtype()
 
     if len(shape) not in {2, 3}:
         raise ValueError(
@@ -68,10 +66,10 @@ def validate_config(config, shape: tuple[int, ...], dtype) -> None:
         raise ValueError(
             f"OpenJPHCodec requires positive chunk dimensions, got {shape!r}"
         )
-    if not _supported_native_dtype(native):
+    if not _supported_native_dtype(dtype):
         raise ValueError(
             "OpenJPHCodec currently supports uint8, uint16, and int16 only; "
-            f"got {native}"
+            f"got {dtype} {type(dtype)}"
         )
 
     if layout == "yx" and len(shape) != 2:
@@ -125,7 +123,12 @@ def pre_encode_reshape(data: np.ndarray, layout: Layout) -> np.ndarray:
     return np.ascontiguousarray(data)
 
 
-def post_decode_reshape(arr: np.ndarray, layout: Layout, result_shape, result_dtype):
+def post_decode_reshape(
+    arr: np.ndarray,
+    layout: Layout,
+    result_shape: tuple[int, ...],
+    result_dtype: np.dtype | str,
+):
     """If necessarry, reshape array after decoding."""
     # A single-component codestream is ambiguous: the SIZ marker cannot
     # distinguish (h, w) from (1, h, w), so the backend returns 2-D and a

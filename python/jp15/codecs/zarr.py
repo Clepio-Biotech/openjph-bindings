@@ -176,7 +176,7 @@ class OpenJPHCodec(ArrayBytesCodec):
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGrid,
     ) -> None:
-        validate_config(self._to_normalized_config(), shape, dtype)
+        validate_config(self._to_normalized_config(), shape, dtype.to_native_dtype())
 
     async def _encode_single(
         self,
