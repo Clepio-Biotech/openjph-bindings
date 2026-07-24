@@ -5,7 +5,7 @@ import io
 import numpy as np
 import pytest
 
-from jp15.zarr import OpenJPHCodec, OpenJPHCodecUnavailableError
+from jp15.codecs.zarr import OpenJPHCodec, OpenJPHCodecUnavailableError
 
 RNG = np.random.default_rng(42)
 
@@ -55,7 +55,7 @@ def test_to_dict_roundtrip() -> None:
 def test_roundtrip_2d(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     import zarr
 
-    from jp15 import zarr as jp15_zarr
+    from jp15.codecs import zarr as jp15_zarr
 
     monkeypatch.setattr(jp15_zarr, "_get_backend", lambda: _FakeOpenJPHBackend())
 
@@ -81,7 +81,7 @@ def test_roundtrip_2d(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
 def test_roundtrip_channel_last(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     import zarr
 
-    from jp15 import zarr as jp15_zarr
+    from jp15.codecs import zarr as jp15_zarr
 
     monkeypatch.setattr(jp15_zarr, "_get_backend", lambda: _FakeOpenJPHBackend())
 
@@ -106,7 +106,7 @@ def test_roundtrip_channel_last(tmp_path, monkeypatch: pytest.MonkeyPatch) -> No
 def test_backend_missing_raises(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     import zarr
 
-    from jp15 import zarr as jp15_zarr
+    from jp15.codecs import zarr as jp15_zarr
 
     def _raise() -> _FakeOpenJPHBackend:
         raise OpenJPHCodecUnavailableError("backend missing")

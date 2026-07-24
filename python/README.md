@@ -44,7 +44,7 @@ caller's side.
 `OpenJPHCodec` is a Zarr v3 array-to-bytes codec passed in the array's `codecs` pipeline.
 
 ```python
-from jp15.zarr import OpenJPHCodec
+from jp15.codecs.zarr import OpenJPHCodec
 import numpy as np
 import zarr
 
