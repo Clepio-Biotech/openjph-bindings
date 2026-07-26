@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import os
-import sys
 import ctypes
+import os
 import platform
+import sys
 import warnings
 from pathlib import Path
 
 import numpy as np
 
 from jp15._constants import PROGRESSION_ORDERS
-
 
 # The release of the native lib to use. Tagged in the repo as e.g. 'C-v0.29.0.1'.
 # When bumping this, also run ``python tools/download_native.py --update-checksums``.
@@ -61,8 +60,7 @@ def find_lib() -> Path:
             if msg:
                 print(msg)
             return lib_path
-    else:
-        raise RuntimeError(f"Could not find lib path from {lib_paths}")
+    raise RuntimeError(f"Could not find lib path from {lib_paths}")
 
 
 lib_path = find_lib()

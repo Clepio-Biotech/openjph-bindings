@@ -1,15 +1,14 @@
 import numpy as np
 import simplezarr
 
+from jp15 import _backend as backend
 from jp15.codecs.common import (
     normalize_config,
-    validate_config,
-    resolve_config,
-    pre_encode_reshape,
     post_decode_reshape,
+    pre_encode_reshape,
+    resolve_config,
+    validate_config,
 )
-from jp15 import _backend as backend
-
 
 __all__ = ["OpenJPHSimplezarrCodec"]
 
@@ -42,7 +41,7 @@ class OpenJPHSimplezarrCodec(simplezarr.codecs.BaseCodec):
         result_dtype: str = decoded_representation_type.dtype
 
         validate_config(self._normalized_config, result_shape, np.dtype(result_dtype))
-        resolved_config = resolve_config(self._normalized_config, value.shape)
+        resolved_config = resolve_config(self._normalized_config, result_shape)
         layout = resolved_config.pop("layout")
 
         decoded = backend.decode(value)

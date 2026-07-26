@@ -6,19 +6,18 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Protocol, cast
 
 import numpy as np
-
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.common import JSON, parse_named_configuration
 
 from jp15.codecs.common import (
     normalize_config,
-    validate_config,
-    resolve_config,
-    pre_encode_reshape,
     post_decode_reshape,
+    pre_encode_reshape,
+    resolve_config,
+    validate_config,
 )
 
-__all__ = ["OpenJPHCodecUnavailableError", "OpenJPHCodec"]
+__all__ = ["OpenJPHCodec", "OpenJPHCodecUnavailableError"]
 
 if TYPE_CHECKING:
     from typing import Self

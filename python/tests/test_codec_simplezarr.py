@@ -7,8 +7,8 @@ from __future__ import annotations
 import io
 
 import numpy as np
-import simplezarr
 import pytest
+import simplezarr
 
 from jp15.codecs import simplezarr as jp15_zarr
 from jp15.codecs.simplezarr import OpenJPHSimplezarrCodec

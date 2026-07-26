@@ -9,4 +9,4 @@ try:
 except PackageNotFoundError:
     __version__ = "0+unknown"
 
-__all__ = ["decode", "encode", "get_info", "__version__"]
+__all__ = ["__version__", "decode", "encode", "get_info"]

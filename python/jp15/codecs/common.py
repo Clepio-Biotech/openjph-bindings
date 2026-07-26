@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Literal, cast
 
 import numpy as np
-from jp15._constants import PROGRESSION_ORDERS
 
+from jp15._constants import PROGRESSION_ORDERS
 
 Layout = Literal["yx", "zyx", "cyx", "yxc"]
 ProgressionOrder = Literal["LRCP", "RLCP", "RPCL", "PCRL", "CPRL"]
@@ -105,7 +105,9 @@ def resolve_config(config: dict, shape: tuple[int, ...]) -> dict:
 
     new_config["layout"] = config["layout"] or _default_layout(shape)
     new_config["irreversible"] = config["irreversible"] or False  # None -> False
-    new_config["num_decompositions"] = 5 if config["num_decompositions"] is None else config["num_decompositions"] 
+    new_config["num_decompositions"] = (
+        5 if config["num_decompositions"] is None else config["num_decompositions"]
+    )
     new_config["color_transform"] = config["color_transform"] or False
 
     planar = config["planar"]

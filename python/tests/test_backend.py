@@ -22,7 +22,6 @@ def test_backend_module_importable() -> None:
 
 def test_public_api_importable() -> None:
     import jp15
-
     from jp15 import _backend
 
     assert jp15.encode is _backend.encode

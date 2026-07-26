@@ -79,7 +79,7 @@ def host_platform() -> str:
 
 def pinned_release(project_root: Path) -> str:
     with open(project_root / "jp15" / "_backend.py", "rt", encoding="utf-8") as f:
-        for line in f.readlines():
+        for line in f:
             if line.startswith("NATIVE_VERSION ="):
                 break
         else:
@@ -124,8 +124,7 @@ def to_h_file(p: str) -> str:
     path = Path(p)
     fname = path.name
     fname = fname.rpartition(".")[0] + ".h"
-    if fname.startswith("lib"):
-        fname = fname[3:]
+    fname = fname.removeprefix("lib")
     return str(path.parent / fname)
 
 
