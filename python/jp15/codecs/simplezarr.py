@@ -11,6 +11,9 @@ from jp15.codecs.common import (
 from jp15 import _backend as backend
 
 
+__all__ = ["OpenJPHSimplezarrCodec"]
+
+
 class OpenJPHSimplezarrCodec(simplezarr.codecs.BaseCodec):
     """OpenJPH codec for simplezarr."""
 

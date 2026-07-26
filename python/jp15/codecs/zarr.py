@@ -18,6 +18,8 @@ from jp15.codecs.common import (
     post_decode_reshape,
 )
 
+__all__ = ["OpenJPHCodecUnavailableError", "OpenJPHCodec"]
+
 if TYPE_CHECKING:
     from typing import Self
 
