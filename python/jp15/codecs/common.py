@@ -105,7 +105,7 @@ def resolve_config(config: dict, shape: tuple[int, ...]) -> dict:
 
     new_config["layout"] = config["layout"] or _default_layout(shape)
     new_config["irreversible"] = config["irreversible"] or False  # None -> False
-    new_config["num_decompositions"] = config["num_decompositions"] or 5
+    new_config["num_decompositions"] = 5 if config["num_decompositions"] is None else config["num_decompositions"] 
     new_config["color_transform"] = config["color_transform"] or False
 
     planar = config["planar"]
