@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.common import JSON, parse_named_configuration
 
+from jp15 import _backend as backend
 from jp15.codecs.common import (
     normalize_config,
     post_decode_reshape,
@@ -17,7 +17,7 @@ from jp15.codecs.common import (
     validate_config,
 )
 
-__all__ = ["OpenJPHCodec", "OpenJPHCodecUnavailableError"]
+__all__ = ["OpenJPHCodec"]
 
 if TYPE_CHECKING:
     from typing import Self
@@ -30,54 +30,6 @@ if TYPE_CHECKING:
     from jp15.codecs.common import (
         Layout,
         ProgressionOrder,
-    )
-
-_BACKEND_MODULE_NAME = "jp15._backend"
-
-
-class OpenJPHCodecUnavailableError(RuntimeError):
-    pass
-
-
-class _OpenJPHBackend(Protocol):
-    def encode(
-        self,
-        array: np.ndarray,
-        *,
-        irreversible: bool,
-        qstep: float | None,
-        num_decompositions: int,
-        block_size: tuple[int, int],
-        progression_order: str,
-        color_transform: bool,
-        planar: bool,
-    ) -> bytes: ...
-
-    def decode(self, data: bytes) -> np.ndarray: ...
-
-
-_backend_cache: _OpenJPHBackend | None = None
-_backend_attempted = False
-
-
-def _get_backend() -> _OpenJPHBackend:
-    global _backend_cache, _backend_attempted
-
-    if _backend_cache is not None:
-        return _backend_cache
-
-    if not _backend_attempted:
-        _backend_attempted = True
-        try:
-            module = importlib.import_module(_BACKEND_MODULE_NAME)
-        except ImportError:
-            module = None
-        if module is not None:
-            _backend_cache = cast("_OpenJPHBackend", module)
-            return _backend_cache
-
-    raise OpenJPHCodecUnavailableError(
-        "OpenJPHCodec requires the native jp15._backend module."
     )
 
 
@@ -186,7 +138,6 @@ class OpenJPHCodec(ArrayBytesCodec):
     ) -> Buffer | None:
         effective = self.evolve_from_array_spec(chunk_spec)
         layout = cast("Layout", effective.layout)
-        backend = _get_backend()
 
         data = chunk_array.as_numpy_array()
         native_dtype = chunk_spec.dtype.to_native_dtype()
@@ -214,7 +165,6 @@ class OpenJPHCodec(ArrayBytesCodec):
     ) -> NDBuffer:
         effective = self.evolve_from_array_spec(chunk_spec)
         layout = cast("Layout", effective.layout)
-        backend = _get_backend()
 
         decoded = await asyncio.to_thread(
             backend.decode,
