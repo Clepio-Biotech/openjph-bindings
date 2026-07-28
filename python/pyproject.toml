@@ -29,3 +29,15 @@ packages = ["jp15"]
 
 [tool.hatch.build.targets.wheel.hooks.custom]
 path = "hatch_build.py"
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "N", "B", "RUF"]
+ignore = [
+    "E501",   # Line too long
+    "RUF012", # Mutable class attributes should be annotated with `typing.ClassVar`
+    "RUF022", # __all__ is not sorted
+    "N806",   # Variable `X` in function should be lowercase
+]

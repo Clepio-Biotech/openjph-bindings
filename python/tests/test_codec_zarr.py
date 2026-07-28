@@ -9,7 +9,7 @@ import io
 import numpy as np
 import pytest
 
-from jp15.codecs.zarr import OpenJPHCodec, OpenJPHCodecUnavailableError
+from jp15.codecs.zarr import OpenJPHCodec
 
 RNG = np.random.default_rng(42)
 
@@ -61,7 +61,7 @@ def test_roundtrip_2d(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
 
     from jp15.codecs import zarr as jp15_zarr
 
-    monkeypatch.setattr(jp15_zarr, "_get_backend", lambda: _FakeOpenJPHBackend())
+    monkeypatch.setattr(jp15_zarr, "backend", _FakeOpenJPHBackend())
 
     shape = (64, 96)
     data = _make_uint16(shape)
@@ -87,7 +87,7 @@ def test_roundtrip_channel_last(tmp_path, monkeypatch: pytest.MonkeyPatch) -> No
 
     from jp15.codecs import zarr as jp15_zarr
 
-    monkeypatch.setattr(jp15_zarr, "_get_backend", lambda: _FakeOpenJPHBackend())
+    monkeypatch.setattr(jp15_zarr, "backend", _FakeOpenJPHBackend())
 
     shape = (24, 40, 3)
     data = _make_uint16(shape)
@@ -105,29 +105,6 @@ def test_roundtrip_channel_last(tmp_path, monkeypatch: pytest.MonkeyPatch) -> No
 
     assert result.shape == shape
     np.testing.assert_array_equal(result, data)
-
-
-def test_backend_missing_raises(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import zarr
-
-    from jp15.codecs import zarr as jp15_zarr
-
-    def _raise() -> _FakeOpenJPHBackend:
-        raise OpenJPHCodecUnavailableError("backend missing")
-
-    monkeypatch.setattr(jp15_zarr, "_get_backend", _raise)
-
-    shape = (16, 16)
-    arr = zarr.create(
-        store=str(tmp_path / "missing_backend.zarr"),
-        shape=shape,
-        chunks=shape,
-        dtype="uint16",
-        codecs=[OpenJPHCodec(layout="yx")],
-    )
-
-    with pytest.raises(OpenJPHCodecUnavailableError, match="backend missing"):
-        arr[:] = _make_uint16(shape)
 
 
 def test_rejects_float64(tmp_path) -> None:

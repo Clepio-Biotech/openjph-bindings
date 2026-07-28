@@ -48,7 +48,7 @@ def test_roundtrip_2d(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
 
     shape = (64, 96)
     data = _make_uint16(shape)
-    codec = codec = dict(
+    codec = dict(
         name="openjph_htj2k",
         configuration=dict(layout="yx"),
     )
@@ -72,7 +72,7 @@ def test_roundtrip_channel_last(tmp_path, monkeypatch: pytest.MonkeyPatch) -> No
     shape = (24, 40, 3)
     data = _make_uint16(shape)
 
-    codec = codec = dict(
+    codec = dict(
         name="openjph_htj2k",
         configuration=dict(layout="yxc", color_transform=True, planar=False),
     )
@@ -136,7 +136,7 @@ def test_real_backend_roundtrip(tmp_path, layout, shape) -> None:
 
     data = _make_uint16(shape)
 
-    codec = codec = dict(
+    codec = dict(
         name="openjph_htj2k",
         configuration=dict(layout=layout),
     )
@@ -161,7 +161,7 @@ def test_real_backend_singleton_chunks(tmp_path) -> None:
     shape = (4, 64, 96)
     data = _make_uint16(shape)
 
-    codec = codec = dict(
+    codec = dict(
         name="openjph_htj2k",
         configuration=dict(layout="zyx"),
     )
@@ -182,7 +182,7 @@ def test_real_backend_lossy(tmp_path) -> None:
     shape = (64, 96)
     data = _make_uint16(shape)
 
-    codec = codec = dict(
+    codec = dict(
         name="openjph_htj2k",
         configuration=dict(layout="yx", irreversible=True, qstep=0.01),
     )
